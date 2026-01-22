@@ -1,22 +1,28 @@
-![Latest Release](https://img.shields.io/github/v/release/jprincevevo/reap?style=flat-square&color=7D56F4)
-
 # reap
+
+[![Latest Release](https://img.shields.io/github/v/release/jprincevevo/reap?style=flat-square&color=7D56F4)](https://github.com/jprincevevo/reap/releases/latest)
 
 A high-performance, visually polished CLI tool for batch-cloning Git repositories based on a YAML config. Optimized for "clone-audit-delete" workflows.
 
-## Installation
+## ✨ Features
 
-### From GitHub Releases
+- 🚀 **Parallel Cloning**: Uses Go Goroutines to clone multiple repositories simultaneously.
+- 🎨 **Interactive TUI**: A modern terminal interface powered by Charmbracelet's Bubble Tea.
+- 🛡️ **Git-Safety**: Automatically detects if you are already inside a Git worktree to prevent accidental sub-repository nesting.
+- 🔄 **Self-Updating**: Keep the tool up to date with a single command (`reap update`).
+- 📂 **Group Management**: Organize your repositories into custom groups for easier batching.
 
-Download the latest binary for your operating system from the [GitHub Releases](https://github.com/jprincevevo/reap/releases) page.
+## 📦 Installation
 
-### For Go Developers
+### Via GitHub Releases (Recommended)
+Download the pre-compiled binary for your OS from the [Releases Page](https://github.com/jprincevevo/reap/releases/latest).
 
+### Via Go
 ```bash
-go install github.com/jprincevevo/reap@latest
+go install [github.com/jprincevevo/reap@latest](https://github.com/jprincevevo/reap@latest)
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
 1.  **Add a repository:**
 
