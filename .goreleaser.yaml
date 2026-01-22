@@ -22,6 +22,10 @@ archives:
   - format: tar.gz
     # The template syntax changed slightly in v2; using .Os and .Arch is still correct
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # This ensures Windows users get a .zip instead of a .tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
     files:
       - LICENSE
       - README.md
