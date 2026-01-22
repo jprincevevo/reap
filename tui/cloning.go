@@ -2,27 +2,48 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-type cloneMsg struct{ repo string }
-type errMsg struct{ err error }
+type status int
+
+const (
+	cloning status = iota
+	done
+	failed
+)
+
+type repoState struct {
+	url    string
+	status status
+	err    error
+}
+
+type cloneMsg struct{ repoIndex int }
+type errMsg struct {
+	repoIndex int
+	err       error
+}
+type finishedMsg struct{}
 
 type cloneModel struct {
+	repos    []repoState
 	spinner  spinner.Model
-	repos    []string
-	cloned   []string
-	errors   []error
 	quitting bool
+	wg       *sync.WaitGroup
+	depth    int
 }
 
 func (m cloneModel) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.cloneNext)
+	return tea.Batch(m.spinner.Tick, m.runClones)
 }
 
 func (m cloneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -34,11 +55,15 @@ func (m cloneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case cloneMsg:
-		m.cloned = append(m.cloned, msg.repo)
-		return m, m.cloneNext
+		m.repos[msg.repoIndex].status = done
+		return m, nil
 	case errMsg:
-		m.errors = append(m.errors, msg.err)
-		return m, m.cloneNext
+		m.repos[msg.repoIndex].status = failed
+		m.repos[msg.repoIndex].err = msg.err
+		return m, nil
+	case finishedMsg:
+		m.quitting = true
+		return m, tea.Quit
 	}
 
 	var cmd tea.Cmd
@@ -48,49 +73,104 @@ func (m cloneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m cloneModel) View() string {
 	if m.quitting {
-		return "Aborting...\n"
+		var s strings.Builder
+		s.WriteString("Cloning finished.\n\n")
+		for _, repo := range m.repos {
+			switch repo.status {
+			case done:
+				s.WriteString(fmt.Sprintf("✓ %s\n", repo.url))
+			case failed:
+				s.WriteString(fmt.Sprintf("✗ %s: %s\n", repo.url, repo.err))
+			}
+		}
+		return s.String()
 	}
 
 	var s strings.Builder
 	s.WriteString("Cloning repositories...\n\n")
-	s.WriteString(m.spinner.View() + " Cloning...\n\n")
-	for _, repo := range m.cloned {
-		s.WriteString(fmt.Sprintf("✓ %s\n", repo))
+
+	for _, repo := range m.repos {
+		switch repo.status {
+		case cloning:
+			s.WriteString(fmt.Sprintf("%s %s\n", m.spinner.View(), repo.url))
+		case done:
+			s.WriteString(fmt.Sprintf("✓ %s\n", repo.url))
+		case failed:
+			s.WriteString(fmt.Sprintf("✗ %s: %s\n", repo.url, repo.err))
+		}
 	}
-	for _, err := range m.errors {
-		s.WriteString(fmt.Sprintf("✗ %s\n", err))
-	}
+
 	return s.String()
 }
 
-func (m *cloneModel) cloneNext() tea.Msg {
-	if len(m.repos) == 0 {
-		return tea.Quit()
+func (m *cloneModel) cloneRepo(repoIndex int) {
+	defer m.wg.Done()
+	repo := m.repos[repoIndex]
+	repoName := strings.TrimSuffix(filepath.Base(repo.url), ".git")
+	if _, err := os.Stat(repoName); !os.IsNotExist(err) {
+		p.Send(errMsg{repoIndex, fmt.Errorf("directory %s already exists", repoName)})
+		return
 	}
 
-	repo := m.repos[0]
-	m.repos = m.repos[1:]
+	args := []string{"clone", repo.url}
+	if m.depth > 0 {
+		args = append(args, "--depth", fmt.Sprintf("%d", m.depth))
+	}
 
-	cmd := exec.Command("git", "clone", repo)
+	cmd := exec.Command("git", args...)
 	if err := cmd.Run(); err != nil {
-		return errMsg{err}
+		p.Send(errMsg{repoIndex, err})
+		return
 	}
 
-	return cloneMsg{repo}
+	p.Send(cloneMsg{repoIndex})
 }
 
-func NewCloneModel(repos []string) cloneModel {
+func (m *cloneModel) runClones() tea.Msg {
+	repoChannel := make(chan int, len(m.repos))
+
+	for i := 0; i < 5; i++ {
+		go func() {
+			for repoIndex := range repoChannel {
+				m.cloneRepo(repoIndex)
+			}
+		}()
+	}
+
+	for i := range m.repos {
+		m.wg.Add(1)
+		repoChannel <- i
+	}
+	close(repoChannel)
+
+	go func() {
+		m.wg.Wait()
+		p.Send(finishedMsg{})
+	}()
+
+	return nil
+}
+
+var p *tea.Program
+
+func InitialCloneModel(repos []string, depth int) error {
+	repoStates := make([]repoState, len(repos))
+	for i, repo := range repos {
+		repoStates[i] = repoState{url: repo, status: cloning}
+	}
+
 	s := spinner.New()
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	return cloneModel{
-		spinner: s,
-		repos:   repos,
-	}
-}
 
-func InitialCloneModel(repos []string) error {
-	m := NewCloneModel(repos)
-	p := tea.NewProgram(m)
+	m := cloneModel{
+		repos:   repoStates,
+		spinner: s,
+		wg:      &sync.WaitGroup{},
+		depth:   depth,
+	}
+
+	p = tea.NewProgram(m)
+
 	_, err := p.Run()
 	return err
 }

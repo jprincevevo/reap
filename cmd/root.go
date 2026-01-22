@@ -3,11 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"reap/config"
 	"reap/tui"
 
 	"github.com/spf13/cobra"
 )
+
+var depth int
 
 var rootCmd = &cobra.Command{
 	Use:   "reap",
@@ -31,7 +34,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		if len(args) > 0 {
-			cloneRepos(args)
+			cloneRepos(args, depth)
 			return
 		}
 
@@ -52,23 +55,26 @@ var rootCmd = &cobra.Command{
 		}
 
 		if len(selected) > 0 {
-			cloneRepos(selected)
+			cloneRepos(selected, depth)
 		}
 	},
 }
 
-func cloneRepos(repos []string) {
-	if _, err := os.Stat(".git"); !os.IsNotExist(err) {
-		fmt.Println("This directory is already a git repository. Are you sure you want to continue? (y/n)")
-		var response string
-		fmt.Scanln(&response)
-		if response != "y" {
+func init() {
+	rootCmd.Flags().IntVar(&depth, "depth", 0, "Set the clone depth")
+}
+
+func cloneRepos(repos []string, depth int) {
+	cmd := exec.Command("git", "rev-parse", "--is-inside-work-tree")
+	if err := cmd.Run(); err == nil {
+		confirmed, err := tui.InitialConfirmModel("This directory is a git repository. Continue?")
+		if err != nil || !confirmed {
 			fmt.Println("Aborting.")
 			return
 		}
 	}
 
-	if err := tui.InitialCloneModel(repos); err != nil {
+	if err := tui.InitialCloneModel(repos, depth); err != nil {
 		fmt.Println("Error cloning repositories:", err)
 	}
 }

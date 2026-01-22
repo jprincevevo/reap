@@ -14,7 +14,8 @@ const (
 )
 
 type Config struct {
-	Repos []Repo `yaml:"repos"`
+	DefaultDepth int    `yaml:"default_depth"`
+	Repos        []Repo `yaml:"repos"`
 }
 
 type Repo struct {
