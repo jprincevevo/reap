@@ -3,12 +3,14 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	defaultConfigName = ".reap.yaml"
+	configDirName  = "reap"
+	configFileName = "config.yaml"
 )
 
 type Config struct {
@@ -27,11 +29,28 @@ type Group struct {
 }
 
 func GetConfigPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
+	var configHome string
+	var err error
+
+	if runtime.GOOS == "windows" {
+		configHome, err = os.UserConfigDir()
+		if err != nil {
+			return "", err
+		}
+	} else {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		configHome = filepath.Join(home, ".config")
+	}
+
+	configDirPath := filepath.Join(configHome, configDirName)
+	if err := os.MkdirAll(configDirPath, 0755); err != nil {
 		return "", err
 	}
-	return filepath.Join(home, defaultConfigName), nil
+
+	return filepath.Join(configDirPath, configFileName), nil
 }
 
 func Load() (*Config, bool, error) {

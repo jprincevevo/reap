@@ -21,8 +21,12 @@ var rootCmd = &cobra.Command{
 		}
 
 		if created {
-			fmt.Println("Created default config file at ~/.reap.yaml")
-			cmd.Help()
+			configPath, _ := config.GetConfigPath()
+			fmt.Printf("Created default config file at %s\n", configPath)
+		}
+
+		if len(cfg.Repos) == 0 {
+			fmt.Println("No repositories configured. Add one with `reap repo add <url>`.")
 			return
 		}
 
