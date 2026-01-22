@@ -1,28 +1,95 @@
+![Latest Release](https://img.shields.io/github/v/release/jprincevevo/reap?style=flat-square&color=7D56F4)
+
 # reap
 
-`reap` is a command-line tool for batch cloning Git repositories. It's designed for developers who frequently work with multiple repositories and need a quick way to clone them for tasks like testing, analysis, or running scripts.
-
-## Why use reap?
-
-- **Organize your repositories**: Group your most frequently used repositories for quick access.
-- **Interactive TUI**: A terminal user interface for selecting which repositories to clone.
-- **Quickly clone repos**: Bypass the configuration and clone repositories directly by providing their URLs.
+A high-performance, visually polished CLI tool for batch-cloning Git repositories based on a YAML config. Optimized for "clone-audit-delete" workflows.
 
 ## Installation
 
-Installation instructions will be added here once the build process is set up.
+### From GitHub Releases
 
-## Usage
+Download the latest binary for your operating system from the [GitHub Releases](https://github.com/jprincevevo/reap/releases) page.
 
-`reap` uses a configuration file at `~/.reap.yaml` to manage your repositories.
+### For Go Developers
 
-### Commands
+```bash
+go install github.com/jprincevevo/reap@latest
+```
 
-- `reap`: The main interactive flow. If you have groups configured, you will be prompted to select a group, otherwise, you will be prompted to select the repositories to clone.
-- `reap <url1> <url2>`: Direct clone of specific URLs, bypassing the configuration file.
-- `reap add <url>`: Add a new repository to the configuration file.
-- `reap remove`: Interactive TUI list to delete a repository from the configuration file.
-- `reap groups`: List all custom groups.
-- `reap groups add <name>`: Prompt with a multi-select list of ALL repositories. The user selects which repos should belong to this new group.
-- `reap groups remove <name>`: Delete a group definition from all repos.
-- `reap update`: Update reap to the latest version.
+## Quick Start
+
+1.  **Add a repository:**
+
+    ```bash
+    reap repo add https://github.com/charmbracelet/bubbletea.git
+    ```
+
+2.  **Launch the TUI:**
+
+    ```bash
+    reap
+    ```
+
+## Configuration
+
+`reap` uses a configuration file located at `~/.config/reap/config.yaml` (on Unix-like systems) or `%AppData%/reap/config.yaml` (on Windows).
+
+### Example `config.yaml`
+
+```yaml
+repos:
+  - url: https://github.com/charmbracelet/bubbletea.git
+    groups:
+      - charm
+  - url: https://github.com/charmbracelet/lipgloss.git
+    groups:
+      - charm
+  - url: https://github.com/spf13/cobra.git
+```
+
+## Commands Reference
+
+| Command                  | Description                                                                 |
+| ------------------------ | --------------------------------------------------------------------------- |
+| `reap`                   | Launch the interactive TUI to select repositories or groups for cloning.    |
+| `reap repo add <url>`    | Add a new repository to the configuration.                                  |
+| `reap repo remove`       | Launch a TUI to select and remove repositories from the configuration.      |
+| `reap group list`        | List all custom groups.                                                     |
+| `reap group add <name>`  | Create a new group and select repositories to add to it.                    |
+| `reap group remove`      | Launch a TUI to select and remove a group.                                  |
+| `reap update`            | Update `reap` to the latest version.                                        |
+
+## Development
+
+### Running Locally
+
+1.  Clone the repository:
+
+    ```bash
+    git clone https://github.com/jprincevevo/reap.git
+    cd reap
+    ```
+
+2.  Run the application:
+
+    ```bash
+    go run main.go
+    ```
+
+### Building a Local Binary
+
+```bash
+go build -o reap
+```
+
+### Testing Versioning
+
+To test the version injection, use the following `ldflags`:
+
+```bash
+go build -ldflags="-X github.com/jprincevevo/reap/version.Version=v1.0.0" -o reap
+```
+
+## Safety
+
+`reap` includes a safety check that prevents you from accidentally cloning repositories inside an existing Git tree. If it detects that you are in a Git repository, it will prompt for confirmation before proceeding.

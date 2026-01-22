@@ -113,17 +113,24 @@ func checkForUpdates() {
 		return
 	}
 
+	// Compare versions
 	if found && latest.Version() != version.Version {
+		// Define a cleaner style without vertical padding
 		style := lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#FAFAFA")).
 			Background(lipgloss.Color("#7D56F4")).
-			PaddingTop(1).
-			PaddingBottom(1).
 			PaddingLeft(2).
 			PaddingRight(2)
 
-		fmt.Println(style.Render(fmt.Sprintf("✨ A newer version (v%s) is available! Run 'reap update' to upgrade.", latest.Version())))
-		time.Sleep(3 * time.Second)
+		// Create the message
+		msg := fmt.Sprintf("✨ A new version of reap is available: %s", latest.Version())
+
+		// Render it. We add the vertical spacing manually in Printf
+		// to ensure the cursor stays at the left margin.
+		fmt.Printf("\n%s\n\n", style.Render(msg))
+
+		// Give the user time to see it before the TUI takes over the screen
+		time.Sleep(2 * time.Second)
 	}
 }
