@@ -25,3 +25,4 @@ Installation instructions will be added here once the build process is set up.
 - `reap groups`: List all custom groups.
 - `reap groups add <name>`: Prompt with a multi-select list of ALL repositories. The user selects which repos should belong to this new group.
 - `reap groups remove <name>`: Delete a group definition from all repos.
+- `reap update`: Update reap to the latest version.

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"reap/cmd"
+	"github.com/jprincevevo/reap/cmd"
 )
 
 func main() {

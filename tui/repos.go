@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"reap/config"
 	"strings"
+
+	"github.com/jprincevevo/reap/config"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"

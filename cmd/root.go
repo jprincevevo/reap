@@ -1,22 +1,35 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
-	"reap/config"
-	"reap/tui"
+	"time"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/creativeprojects/go-selfupdate"
+	"github.com/jprincevevo/reap/config"
+	"github.com/jprincevevo/reap/tui"
+	"github.com/jprincevevo/reap/version"
 
 	"github.com/spf13/cobra"
 )
 
 var depth int
+var showVersion bool
 
 var rootCmd = &cobra.Command{
 	Use:   "reap",
 	Short: "A CLI tool for batch-cloning repositories",
 	Long:  `reap is a terminal user interface application for cloning git repositories from a yaml config file.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if showVersion {
+			fmt.Printf("reap version %s\n", version.Version)
+			return
+		}
+
+		go checkForUpdates()
 		cfg, created, err := config.Load()
 		if err != nil {
 			fmt.Println("Error loading config:", err)
@@ -62,6 +75,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().IntVar(&depth, "depth", 0, "Set the clone depth")
+	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Display version")
 }
 
 func cloneRepos(repos []string, depth int) {
@@ -83,5 +97,33 @@ func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
+	}
+}
+
+func checkForUpdates() {
+	updater, err := selfupdate.NewUpdater(selfupdate.Config{})
+	if err != nil {
+		return
+	}
+
+	repo := selfupdate.ParseSlug("jprincevevo/reap")
+
+	latest, found, err := updater.DetectLatest(context.Background(), repo)
+	if err != nil {
+		return
+	}
+
+	if found && latest.Version() != version.Version {
+		style := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#FAFAFA")).
+			Background(lipgloss.Color("#7D56F4")).
+			PaddingTop(1).
+			PaddingBottom(1).
+			PaddingLeft(2).
+			PaddingRight(2)
+
+		fmt.Println(style.Render(fmt.Sprintf("✨ A newer version (v%s) is available! Run 'reap update' to upgrade.", latest.Version())))
+		time.Sleep(3 * time.Second)
 	}
 }

@@ -2,8 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"reap/config"
-	"reap/tui"
+
+	"github.com/jprincevevo/reap/config"
+	"github.com/jprincevevo/reap/tui"
 
 	"github.com/spf13/cobra"
 )
