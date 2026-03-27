@@ -2,47 +2,18 @@ package tui
 
 import (
 	"fmt"
-	"io"
-	"os"
-	"strings"
 
 	"github.com/jprincevevo/reap/config"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 )
-
-type removeItem item
-
-func (i removeItem) FilterValue() string { return "" }
-
-type removeDelegate struct{}
-
-func (d removeDelegate) Height() int                             { return 1 }
-func (d removeDelegate) Spacing() int                            { return 0 }
-func (d removeDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
-func (d removeDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
-	i, ok := listItem.(removeItem)
-	if !ok {
-		return
-	}
-
-	str := fmt.Sprintf("%d. %s", index+1, i)
-
-	fn := itemStyle.Render
-	if index == m.Index() {
-		fn = func(s ...string) string {
-			return selectedItemStyle.Render("> " + strings.Join(s, " "))
-		}
-	}
-
-	fmt.Fprint(w, fn(str))
-}
 
 type removeModel struct {
 	list     list.Model
 	choice   string
 	quitting bool
+	ready    bool
 }
 
 func (m removeModel) Init() tea.Cmd {
@@ -52,17 +23,18 @@ func (m removeModel) Init() tea.Cmd {
 func (m removeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.list.SetWidth(msg.Width)
+		m.list.SetSize(msg.Width, listHeight)
+		m.ready = true
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch keypress := msg.String(); keypress {
-		case "ctrl+c":
+		case "ctrl+c", "q":
 			m.quitting = true
 			return m, tea.Quit
 
 		case "enter":
-			i, ok := m.list.SelectedItem().(removeItem)
+			i, ok := m.list.SelectedItem().(item)
 			if ok {
 				m.choice = string(i)
 			}
@@ -75,25 +47,30 @@ func (m removeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m removeModel) View() string {
+func (m removeModel) View() tea.View {
+	if !m.ready {
+		return tea.NewView("")
+	}
 	if m.choice != "" {
-		return quitTextStyle.Render(fmt.Sprintf("Selected repository: %s", m.choice))
+		return tea.NewView(quitTextStyle.Render(fmt.Sprintf("Selected repository: %s", m.choice)))
 	}
 	if m.quitting {
-		return quitTextStyle.Render("Cancelling...")
+		return tea.NewView(quitTextStyle.Render("Cancelling..."))
 	}
-	return "\n" + m.list.View()
+	v := tea.NewView("\n" + m.list.View())
+	v.AltScreen = true
+	return v
 }
 
 func NewRemoveModel(cfg *config.Config) removeModel {
 	var items []list.Item
 	for _, repo := range cfg.Repos {
-		items = append(items, removeItem(repo.URL))
+		items = append(items, item(repo.URL))
 	}
 
 	const defaultWidth = 20
 
-	l := list.New(items, removeDelegate{}, defaultWidth, listHeight)
+	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
 	l.Title = "Select a repository to remove"
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
@@ -111,8 +88,7 @@ func InitialRemoveModel(cfg *config.Config) (string, error) {
 
 	finalModel, err := p.Run()
 	if err != nil {
-		fmt.Println("Error running program:", err)
-		os.Exit(1)
+		return "", err
 	}
 
 	if m, ok := finalModel.(removeModel); ok && m.choice != "" {

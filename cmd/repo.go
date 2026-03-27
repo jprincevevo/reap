@@ -28,6 +28,13 @@ var addRepoCmd = &cobra.Command{
 			return
 		}
 
+		for _, r := range cfg.Repos {
+			if r.URL == args[0] {
+				fmt.Printf("%s is already in the config.\n", args[0])
+				return
+			}
+		}
+
 		newRepo := config.Repo{
 			URL:      args[0],
 			Selected: true,
@@ -51,6 +58,11 @@ var removeRepoCmd = &cobra.Command{
 		cfg, _, err := config.Load()
 		if err != nil {
 			fmt.Println("Error loading config:", err)
+			return
+		}
+
+		if len(cfg.Repos) == 0 {
+			fmt.Println("No repositories configured.")
 			return
 		}
 
@@ -83,6 +95,11 @@ var listReposCmd = &cobra.Command{
 		cfg, _, err := config.Load()
 		if err != nil {
 			fmt.Println("Error loading config:", err)
+			return
+		}
+
+		if len(cfg.Repos) == 0 {
+			fmt.Println("No repositories configured.")
 			return
 		}
 

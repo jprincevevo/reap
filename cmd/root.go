@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/creativeprojects/go-selfupdate"
 	"github.com/jprincevevo/reap/config"
 	"github.com/jprincevevo/reap/tui"
@@ -29,7 +29,12 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
-		go checkForUpdates()
+		updateDone := make(chan struct{})
+		go func() {
+			checkForUpdates()
+			close(updateDone)
+		}()
+
 		cfg, created, err := config.Load()
 		if err != nil {
 			fmt.Println("Error loading config:", err)
@@ -46,23 +51,24 @@ var rootCmd = &cobra.Command{
 			return
 		}
 
+		if depth == 0 && cfg.DefaultDepth > 0 {
+			depth = cfg.DefaultDepth
+		}
+
 		if len(args) > 0 {
+			<-updateDone
 			cloneRepos(args, depth)
 			return
 		}
 
-		var group string
-		if cfg.HasGroups() {
-			g, err := tui.InitialGroupModel(cfg)
-			if err != nil {
-				return
-			}
-			group = g
-		} else {
-			group = "Show All"
-		}
+		<-updateDone
 
-		selected, err := tui.InitialRepoModel(cfg, group)
+		var selected []string
+		if cfg.HasGroups() {
+			selected, err = tui.InitialFlowModel(cfg)
+		} else {
+			selected, err = tui.InitialRepoModel(cfg, "Show All")
+		}
 		if err != nil {
 			return
 		}
@@ -113,9 +119,7 @@ func checkForUpdates() {
 		return
 	}
 
-	// Compare versions
-	if found && latest.Version() != version.Version {
-		// Define a cleaner style without vertical padding
+	if found && latest.Version() != version.Version && version.Version != "dev" {
 		style := lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#FAFAFA")).
@@ -123,14 +127,8 @@ func checkForUpdates() {
 			PaddingLeft(2).
 			PaddingRight(2)
 
-		// Create the message
 		msg := fmt.Sprintf("✨ A new version of reap is available: %s", latest.Version())
-
-		// Render it. We add the vertical spacing manually in Printf
-		// to ensure the cursor stays at the left margin.
 		fmt.Printf("\n%s\n\n", style.Render(msg))
-
-		// Give the user time to see it before the TUI takes over the screen
 		time.Sleep(2 * time.Second)
 	}
 }

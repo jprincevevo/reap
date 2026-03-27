@@ -3,8 +3,8 @@ package tui
 import (
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 var (
@@ -23,10 +23,10 @@ var (
 			Padding(0, 3).
 			MarginTop(1)
 
-	activeButtonStyle = buttonStyle.Copy().
-				Foreground(lipgloss.Color("#FFF7DB")).
-				Background(lipgloss.Color("#F25D94")).
-				Underline(true)
+	activeButtonStyle = buttonStyle.
+			Foreground(lipgloss.Color("#FFF7DB")).
+			Background(lipgloss.Color("#F25D94")).
+			Underline(true)
 )
 
 type confirmModel struct {
@@ -42,7 +42,7 @@ func (m confirmModel) Init() tea.Cmd {
 
 func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			m.quitting = true
@@ -66,9 +66,9 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m confirmModel) View() string {
+func (m confirmModel) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.NewView("")
 	}
 
 	var yes, no string
@@ -84,11 +84,11 @@ func (m confirmModel) View() string {
 	buttons := lipgloss.JoinHorizontal(lipgloss.Top, yes, no)
 	ui := lipgloss.JoinVertical(lipgloss.Center, question, buttons)
 
-	return dialogBoxStyle.Render(ui)
+	return tea.NewView(dialogBoxStyle.Render(ui))
 }
 
 func InitialConfirmModel(prompt string) (bool, error) {
-	m := confirmModel{prompt: prompt}
+	m := confirmModel{prompt: prompt, activeButton: 1}
 	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {

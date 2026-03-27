@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type status int
@@ -48,7 +48,7 @@ func (m cloneModel) Init() tea.Cmd {
 
 func (m cloneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c":
 			m.quitting = true
@@ -71,9 +71,9 @@ func (m cloneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m cloneModel) View() string {
+func (m cloneModel) View() tea.View {
+	var s strings.Builder
 	if m.quitting {
-		var s strings.Builder
 		s.WriteString("Cloning finished.\n\n")
 		for _, repo := range m.repos {
 			switch repo.status {
@@ -83,24 +83,20 @@ func (m cloneModel) View() string {
 				s.WriteString(fmt.Sprintf("✗ %s: %s\n", repo.url, repo.err))
 			}
 		}
-		return s.String()
-	}
-
-	var s strings.Builder
-	s.WriteString("Cloning repositories...\n\n")
-
-	for _, repo := range m.repos {
-		switch repo.status {
-		case cloning:
-			s.WriteString(fmt.Sprintf("%s %s\n", m.spinner.View(), repo.url))
-		case done:
-			s.WriteString(fmt.Sprintf("✓ %s\n", repo.url))
-		case failed:
-			s.WriteString(fmt.Sprintf("✗ %s: %s\n", repo.url, repo.err))
+	} else {
+		s.WriteString("Cloning repositories...\n\n")
+		for _, repo := range m.repos {
+			switch repo.status {
+			case cloning:
+				s.WriteString(fmt.Sprintf("%s %s\n", m.spinner.View(), repo.url))
+			case done:
+				s.WriteString(fmt.Sprintf("✓ %s\n", repo.url))
+			case failed:
+				s.WriteString(fmt.Sprintf("✗ %s: %s\n", repo.url, repo.err))
+			}
 		}
 	}
-
-	return s.String()
+	return tea.NewView(s.String())
 }
 
 func (m *cloneModel) cloneRepo(repoIndex int) {

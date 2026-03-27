@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/creativeprojects/go-selfupdate"
 	"github.com/jprincevevo/reap/version"
 	"github.com/spf13/cobra"

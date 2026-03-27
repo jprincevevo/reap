@@ -38,10 +38,19 @@ var addGroupCmd = &cobra.Command{
 		for i, repo := range cfg.Repos {
 			for _, selected := range selectedRepos {
 				if repo.URL == selected {
-					cfg.Repos[i].Groups = append(cfg.Repos[i].Groups, config.Group{
-						Name:     groupName,
-						Selected: true,
-					})
+					alreadyHas := false
+					for _, g := range cfg.Repos[i].Groups {
+						if g.Name == groupName {
+							alreadyHas = true
+							break
+						}
+					}
+					if !alreadyHas {
+						cfg.Repos[i].Groups = append(cfg.Repos[i].Groups, config.Group{
+							Name:     groupName,
+							Selected: true,
+						})
+					}
 				}
 			}
 		}
@@ -68,14 +77,22 @@ var removeGroupCmd = &cobra.Command{
 			return
 		}
 
+		removed := 0
 		for i, repo := range cfg.Repos {
 			var newGroups []config.Group
 			for _, group := range repo.Groups {
 				if group.Name != groupName {
 					newGroups = append(newGroups, group)
+				} else {
+					removed++
 				}
 			}
 			cfg.Repos[i].Groups = newGroups
+		}
+
+		if removed == 0 {
+			fmt.Printf("Group %q not found in any repository.\n", groupName)
+			return
 		}
 
 		if err := config.Save(cfg); err != nil {
@@ -105,6 +122,10 @@ var listGroupsCmd = &cobra.Command{
 					fmt.Println(group.Name)
 				}
 			}
+		}
+
+		if len(seenGroups) == 0 {
+			fmt.Println("No groups configured.")
 		}
 	},
 }

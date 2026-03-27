@@ -1,54 +1,16 @@
 package tui
 
 import (
-	"fmt"
-	"io"
-	"os"
-	"strings"
-
 	"github.com/jprincevevo/reap/config"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 )
-
-type groupAddItem repoItem
-
-func (i groupAddItem) FilterValue() string { return i.url }
-func (i groupAddItem) Title() string       { return i.url }
-func (i groupAddItem) Description() string {
-	if i.selected {
-		return "[x]"
-	}
-	return "[ ]"
-}
-
-type groupAddDelegate struct{}
-
-func (d groupAddDelegate) Height() int                             { return 1 }
-func (d groupAddDelegate) Spacing() int                            { return 0 }
-func (d groupAddDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
-func (d groupAddDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
-	i, ok := listItem.(groupAddItem)
-	if !ok {
-		return
-	}
-
-	str := fmt.Sprintf("%s %s", i.Description(), i.Title())
-
-	fn := itemStyle.Render
-	if index == m.Index() {
-		fn = func(s ...string) string {
-			return selectedItemStyle.Render("> " + strings.Join(s, " "))
-		}
-	}
-
-	fmt.Fprint(w, fn(str))
-}
 
 type groupAddModel struct {
 	list     list.Model
 	quitting bool
+	ready    bool
 }
 
 func (m groupAddModel) Init() tea.Cmd {
@@ -58,23 +20,26 @@ func (m groupAddModel) Init() tea.Cmd {
 func (m groupAddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.list.SetWidth(msg.Width)
+		m.list.SetSize(msg.Width, listHeight)
+		m.ready = true
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch keypress := msg.String(); keypress {
-		case "ctrl+c":
+		case "ctrl+c", "q":
 			m.quitting = true
 			return m, tea.Quit
 
 		case "enter":
 			return m, tea.Quit
 
-		case " ":
-			if i, ok := m.list.SelectedItem().(groupAddItem); ok {
+		case "space":
+			if i, ok := m.list.SelectedItem().(repoItem); ok {
 				i.selected = !i.selected
-				m.list.SetItem(m.list.Index(), i)
+				cmd := m.list.SetItem(m.list.Index(), i)
+				return m, cmd
 			}
+			return m, nil
 		}
 	}
 
@@ -83,22 +48,27 @@ func (m groupAddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m groupAddModel) View() string {
-	if m.quitting {
-		return quitTextStyle.Render("Cancelling...")
+func (m groupAddModel) View() tea.View {
+	if !m.ready {
+		return tea.NewView("")
 	}
-	return "\n" + m.list.View()
+	if m.quitting {
+		return tea.NewView(quitTextStyle.Render("Cancelling..."))
+	}
+	v := tea.NewView("\n" + m.list.View())
+	v.AltScreen = true
+	return v
 }
 
 func NewGroupAddModel(cfg *config.Config) groupAddModel {
 	var items []list.Item
 	for _, repo := range cfg.Repos {
-		items = append(items, groupAddItem{url: repo.URL, selected: false})
+		items = append(items, repoItem{url: repo.URL, selected: false})
 	}
 
 	const defaultWidth = 20
 
-	l := list.New(items, groupAddDelegate{}, defaultWidth, listHeight)
+	l := list.New(items, repoDelegate{}, defaultWidth, listHeight)
 	l.Title = "Select repositories to add to the group"
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
@@ -116,14 +86,13 @@ func InitialGroupAddModel(cfg *config.Config) ([]string, error) {
 
 	finalModel, err := p.Run()
 	if err != nil {
-		fmt.Println("Error running program:", err)
-		os.Exit(1)
+		return nil, err
 	}
 
 	var selected []string
 	if m, ok := finalModel.(groupAddModel); ok {
 		for _, item := range m.list.Items() {
-			if i, ok := item.(groupAddItem); ok && i.selected {
+			if i, ok := item.(repoItem); ok && i.selected {
 				selected = append(selected, i.url)
 			}
 		}

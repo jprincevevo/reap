@@ -1,17 +1,21 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/jprincevevo/reap/config"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
 )
+
+// ErrGoBack is returned by InitialRepoModel when the user presses escape to
+// go back to the previous screen.
+var ErrGoBack = errors.New("go back")
 
 type repoItem struct {
 	url      string
@@ -53,6 +57,8 @@ func (d repoDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 type repoModel struct {
 	list     list.Model
 	quitting bool
+	goBack   bool
+	ready    bool
 }
 
 func (m repoModel) Init() tea.Cmd {
@@ -63,22 +69,29 @@ func (m repoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.list.SetSize(msg.Width, listHeight)
+		m.ready = true
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch keypress := msg.String(); keypress {
 		case "ctrl+c", "q":
 			m.quitting = true
 			return m, tea.Quit
 
+		case "esc":
+			m.goBack = true
+			return m, tea.Quit
+
 		case "enter":
 			return m, tea.Quit
 
-		case " ":
+		case "space":
 			if i, ok := m.list.SelectedItem().(repoItem); ok {
 				i.selected = !i.selected
-				m.list.SetItem(m.list.Index(), i)
+				cmd := m.list.SetItem(m.list.Index(), i)
+				return m, cmd
 			}
+			return m, nil
 		}
 	}
 
@@ -87,11 +100,21 @@ func (m repoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m repoModel) View() string {
-	if m.quitting {
-		return quitTextStyle.Render("Cancelling...")
+func (m repoModel) View() tea.View {
+	if !m.ready {
+		v := tea.NewView("")
+		v.AltScreen = true
+		return v
 	}
-	return "\n" + m.list.View()
+	if m.quitting {
+		return tea.NewView(quitTextStyle.Render("Cancelling..."))
+	}
+	if m.goBack {
+		return tea.NewView("")
+	}
+	v := tea.NewView("\n" + m.list.View())
+	v.AltScreen = true
+	return v
 }
 
 func NewRepoModel(cfg *config.Config, group string) repoModel {
@@ -128,6 +151,10 @@ func NewRepoModel(cfg *config.Config, group string) repoModel {
 				key.WithHelp("enter", "confirm"),
 			),
 			key.NewBinding(
+				key.WithKeys("esc"),
+				key.WithHelp("esc", "back"),
+			),
+			key.NewBinding(
 				key.WithKeys("ctrl+c", "q"),
 				key.WithHelp("ctrl+c/q", "quit"),
 			),
@@ -140,16 +167,18 @@ func NewRepoModel(cfg *config.Config, group string) repoModel {
 func InitialRepoModel(cfg *config.Config, group string) ([]string, error) {
 	m := NewRepoModel(cfg, group)
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m)
 
 	finalModel, err := p.Run()
 	if err != nil {
-		fmt.Println("Error running program:", err)
-		os.Exit(1)
+		return nil, err
 	}
 
 	var selected []string
 	if m, ok := finalModel.(repoModel); ok {
+		if m.goBack {
+			return nil, ErrGoBack
+		}
 		if m.quitting {
 			return nil, fmt.Errorf("aborted")
 		}

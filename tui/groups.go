@@ -3,14 +3,13 @@ package tui
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/jprincevevo/reap/config"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 const listHeight = 14
@@ -19,8 +18,8 @@ var (
 	titleStyle        = lipgloss.NewStyle().MarginLeft(2)
 	itemStyle         = lipgloss.NewStyle().PaddingLeft(4)
 	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170"))
-	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
-	helpStyle         = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
+	paginationStyle   = list.DefaultStyles(false).PaginationStyle.PaddingLeft(4)
+	helpStyle         = list.DefaultStyles(false).HelpStyle.PaddingLeft(4).PaddingBottom(1)
 	quitTextStyle     = lipgloss.NewStyle().Margin(1, 0, 2, 4)
 )
 
@@ -55,6 +54,7 @@ type groupModel struct {
 	list     list.Model
 	choice   string
 	quitting bool
+	ready    bool
 }
 
 func (m groupModel) Init() tea.Cmd {
@@ -65,11 +65,12 @@ func (m groupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.list.SetSize(msg.Width, listHeight)
+		m.ready = true
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch keypress := msg.String(); keypress {
-		case "ctrl+c":
+		case "ctrl+c", "q":
 			m.quitting = true
 			return m, tea.Quit
 
@@ -87,14 +88,21 @@ func (m groupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m groupModel) View() string {
+func (m groupModel) View() tea.View {
+	if !m.ready {
+		v := tea.NewView("")
+		v.AltScreen = true
+		return v
+	}
 	if m.choice != "" {
-		return quitTextStyle.Render(fmt.Sprintf("Selected group: %s", m.choice))
+		return tea.NewView(quitTextStyle.Render(fmt.Sprintf("Selected group: %s", m.choice)))
 	}
 	if m.quitting {
-		return quitTextStyle.Render("Cancelling...")
+		return tea.NewView(quitTextStyle.Render("Cancelling..."))
 	}
-	return "\n" + m.list.View()
+	v := tea.NewView("\n" + m.list.View())
+	v.AltScreen = true
+	return v
 }
 
 func NewGroupModel(cfg *config.Config) groupModel {
@@ -127,12 +135,11 @@ func NewGroupModel(cfg *config.Config) groupModel {
 func InitialGroupModel(cfg *config.Config) (string, error) {
 	m := NewGroupModel(cfg)
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m)
 
 	finalModel, err := p.Run()
 	if err != nil {
-		fmt.Println("Error running program:", err)
-		os.Exit(1)
+		return "", err
 	}
 
 	if m, ok := finalModel.(groupModel); ok && m.choice != "" {
