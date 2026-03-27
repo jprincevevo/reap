@@ -64,7 +64,7 @@ func (m groupModel) Init() tea.Cmd {
 func (m groupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.list.SetWidth(msg.Width)
+		m.list.SetSize(msg.Width, listHeight)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -127,7 +127,7 @@ func NewGroupModel(cfg *config.Config) groupModel {
 func InitialGroupModel(cfg *config.Config) (string, error) {
 	m := NewGroupModel(cfg)
 
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	finalModel, err := p.Run()
 	if err != nil {
