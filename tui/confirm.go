@@ -24,15 +24,15 @@ var (
 			MarginTop(1)
 
 	activeButtonStyle = buttonStyle.
-			Foreground(lipgloss.Color("#FFF7DB")).
-			Background(lipgloss.Color("#F25D94")).
-			Underline(true)
+				Foreground(lipgloss.Color("#FFF7DB")).
+				Background(lipgloss.Color("#F25D94")).
+				Underline(true)
 )
 
 type confirmModel struct {
-	prompt      string
-	confirmed   bool
-	quitting    bool
+	prompt       string
+	confirmed    bool
+	quitting     bool
 	activeButton int
 }
 

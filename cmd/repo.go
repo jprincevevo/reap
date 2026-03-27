@@ -28,19 +28,10 @@ var addRepoCmd = &cobra.Command{
 			return
 		}
 
-		for _, r := range cfg.Repos {
-			if r.URL == args[0] {
-				fmt.Printf("%s is already in the config.\n", args[0])
-				return
-			}
+		if !addRepo(cfg, args[0]) {
+			fmt.Printf("%s is already in the config.\n", args[0])
+			return
 		}
-
-		newRepo := config.Repo{
-			URL:      args[0],
-			Selected: true,
-		}
-
-		cfg.Repos = append(cfg.Repos, newRepo)
 
 		if err := config.Save(cfg); err != nil {
 			fmt.Println("Error saving config:", err)
@@ -71,13 +62,7 @@ var removeRepoCmd = &cobra.Command{
 			return
 		}
 
-		var newRepos []config.Repo
-		for _, repo := range cfg.Repos {
-			if repo.URL != repoToRemove {
-				newRepos = append(newRepos, repo)
-			}
-		}
-		cfg.Repos = newRepos
+		cfg.Repos = removeRepo(cfg, repoToRemove)
 
 		if err := config.Save(cfg); err != nil {
 			fmt.Println("Error saving config:", err)
@@ -98,13 +83,14 @@ var listReposCmd = &cobra.Command{
 			return
 		}
 
-		if len(cfg.Repos) == 0 {
+		urls := listRepos(cfg)
+		if len(urls) == 0 {
 			fmt.Println("No repositories configured.")
 			return
 		}
 
-		for _, repo := range cfg.Repos {
-			fmt.Println(repo.URL)
+		for _, url := range urls {
+			fmt.Println(url)
 		}
 	},
 }

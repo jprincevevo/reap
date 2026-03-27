@@ -35,32 +35,14 @@ var addGroupCmd = &cobra.Command{
 			return
 		}
 
-		for i, repo := range cfg.Repos {
-			for _, selected := range selectedRepos {
-				if repo.URL == selected {
-					alreadyHas := false
-					for _, g := range cfg.Repos[i].Groups {
-						if g.Name == groupName {
-							alreadyHas = true
-							break
-						}
-					}
-					if !alreadyHas {
-						cfg.Repos[i].Groups = append(cfg.Repos[i].Groups, config.Group{
-							Name:     groupName,
-							Selected: true,
-						})
-					}
-				}
-			}
-		}
+		modified := applyGroupToRepos(cfg, groupName, selectedRepos)
 
 		if err := config.Save(cfg); err != nil {
 			fmt.Println("Error saving config:", err)
 			return
 		}
 
-		fmt.Printf("Added group %s to %d repositories.\n", groupName, len(selectedRepos))
+		fmt.Printf("Added group %s to %d repositories.\n", groupName, modified)
 	},
 }
 
@@ -77,20 +59,7 @@ var removeGroupCmd = &cobra.Command{
 			return
 		}
 
-		removed := 0
-		for i, repo := range cfg.Repos {
-			var newGroups []config.Group
-			for _, group := range repo.Groups {
-				if group.Name != groupName {
-					newGroups = append(newGroups, group)
-				} else {
-					removed++
-				}
-			}
-			cfg.Repos[i].Groups = newGroups
-		}
-
-		if removed == 0 {
+		if removeGroupFromAllRepos(cfg, groupName) == 0 {
 			fmt.Printf("Group %q not found in any repository.\n", groupName)
 			return
 		}
@@ -114,18 +83,14 @@ var listGroupsCmd = &cobra.Command{
 			return
 		}
 
-		seenGroups := make(map[string]bool)
-		for _, repo := range cfg.Repos {
-			for _, group := range repo.Groups {
-				if !seenGroups[group.Name] {
-					seenGroups[group.Name] = true
-					fmt.Println(group.Name)
-				}
-			}
+		names := uniqueGroupNames(cfg)
+		if len(names) == 0 {
+			fmt.Println("No groups configured.")
+			return
 		}
 
-		if len(seenGroups) == 0 {
-			fmt.Println("No groups configured.")
+		for _, name := range names {
+			fmt.Println(name)
 		}
 	},
 }
