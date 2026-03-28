@@ -66,15 +66,7 @@ func (m manageRepoModel) buildList() list.Model {
 		items = append(items, item(repo.URL))
 	}
 
-	const defaultWidth = 20
-	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = "Manage repositories"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-	l.Styles.Title = titleStyle
-	l.Styles.PaginationStyle = paginationStyle
-	l.Styles.HelpStyle = helpStyle
-	l.Help.Styles = dimHelpStyles
+	l := newList(items, itemDelegate{}, "Manage repositories")
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
@@ -82,11 +74,9 @@ func (m manageRepoModel) buildList() list.Model {
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
 	}
-
 	if m.width > 0 {
 		l.SetSize(m.width, listHeight)
 	}
-
 	return l
 }
 
@@ -101,15 +91,7 @@ func (m manageRepoModel) buildDetailList() list.Model {
 		}
 	}
 
-	const defaultWidth = 20
-	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = m.selectedRepo
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-	l.Styles.Title = titleStyle
-	l.Styles.PaginationStyle = paginationStyle
-	l.Styles.HelpStyle = helpStyle
-	l.Help.Styles = dimHelpStyles
+	l := newList(items, itemDelegate{}, m.selectedRepo)
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add to group")),
@@ -117,11 +99,9 @@ func (m manageRepoModel) buildDetailList() list.Model {
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
 	}
-
 	if m.width > 0 {
 		l.SetSize(m.width, listHeight)
 	}
-
 	return l
 }
 
@@ -148,25 +128,15 @@ func (m manageRepoModel) buildGroupList() list.Model {
 		}
 	}
 
-	const defaultWidth = 20
-	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = "Add to group"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-	l.Styles.Title = titleStyle
-	l.Styles.PaginationStyle = paginationStyle
-	l.Styles.HelpStyle = helpStyle
-	l.Help.Styles = dimHelpStyles
+	l := newList(items, itemDelegate{}, "Add to group")
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
 	}
-
 	if m.width > 0 {
 		l.SetSize(m.width, listHeight)
 	}
-
 	return l
 }
 
@@ -331,18 +301,16 @@ func (m manageRepoModel) updateAddToGroup(msg tea.Msg) (tea.Model, tea.Cmd) {
 							break
 						}
 					}
-					if !alreadyHas {
-						m.cfg.Repos[i].Groups = append(m.cfg.Repos[i].Groups, config.Group{
-							Name:     groupName,
-							Selected: true,
-						})
-					}
-					break
+			if !alreadyHas {
+					m.cfg.Repos[i].Groups = append(m.cfg.Repos[i].Groups, config.Group{
+						Name:     groupName,
+						Selected: true,
+					})
 				}
+				break
 			}
-			if err := config.Save(m.cfg); err != nil {
-				fmt.Println("Error saving config:", err)
-			}
+		}
+		logSaveErr(config.Save(m.cfg))
 			m.screen = mrScreenDetail
 			m.detailList = m.buildDetailList()
 			return m, nil
@@ -361,10 +329,8 @@ func (m manageRepoModel) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.prompt.quitting {
 		url := m.prompt.input.Value()
 		if url != "" {
-			addRepo(m.cfg, url)
-			if err := config.Save(m.cfg); err != nil {
-				fmt.Println("Error saving config:", err)
-			}
+		addRepo(m.cfg, url)
+		logSaveErr(config.Save(m.cfg))
 		}
 		m.screen = mrScreenList
 		m.list = m.buildList()
@@ -380,9 +346,7 @@ func (m manageRepoModel) updateRemove(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if m.remove.choice != "" {
 		m.cfg.Repos = removeRepoFromCfg(m.cfg, m.remove.choice)
-		if err := config.Save(m.cfg); err != nil {
-			fmt.Println("Error saving config:", err)
-		}
+		logSaveErr(config.Save(m.cfg))
 		m.screen = mrScreenList
 		m.list = m.buildList()
 		return m, nil
@@ -411,13 +375,11 @@ func (m manageRepoModel) updateConfirmRemoveGroup(msg tea.Msg) (tea.Model, tea.C
 							kept = append(kept, g)
 						}
 					}
-					m.cfg.Repos[i].Groups = kept
-					break
-				}
+			m.cfg.Repos[i].Groups = kept
+				break
 			}
-			if err := config.Save(m.cfg); err != nil {
-				fmt.Println("Error saving config:", err)
-			}
+		}
+		logSaveErr(config.Save(m.cfg))
 		}
 		m.screen = mrScreenDetail
 		m.detailList = m.buildDetailList()

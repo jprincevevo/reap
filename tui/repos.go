@@ -160,6 +160,18 @@ func (m repoModel) View() tea.View {
 	if m.goBack {
 		return tea.NewView("")
 	}
+	enterHelp := "confirm"
+	if m.list.FilterState() == list.FilterApplied {
+		enterHelp = "clone visible"
+	}
+	m.list.AdditionalShortHelpKeys = func() []key.Binding {
+		return []key.Binding{
+			key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "toggle")),
+			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", enterHelp)),
+			key.NewBinding(key.WithKeys("~"), key.WithHelp("~", "already in dir")),
+			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		}
+	}
 	v := tea.NewView("\n" + m.list.View())
 	v.AltScreen = true
 	return v
@@ -174,7 +186,7 @@ func repoExists(url string) bool {
 func NewRepoModel(cfg *config.Config, group string) repoModel {
 	var items []list.Item
 	for _, repo := range cfg.Repos {
-		if group == "Show All" {
+		if group == showAllRepos {
 			exists := repoExists(repo.URL)
 			sel := repo.Selected
 			if exists {
@@ -195,36 +207,7 @@ func NewRepoModel(cfg *config.Config, group string) repoModel {
 		}
 	}
 
-	const defaultWidth = 20
-
-	l := list.New(items, repoDelegate{}, defaultWidth, listHeight)
-	l.Title = "Select repositories to clone"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-	l.Styles.Title = titleStyle
-	l.Styles.PaginationStyle = paginationStyle
-	l.Styles.HelpStyle = helpStyle
-	l.Help.Styles = dimHelpStyles
-	l.AdditionalShortHelpKeys = func() []key.Binding {
-		return []key.Binding{
-			key.NewBinding(
-				key.WithKeys("space"),
-				key.WithHelp("space", "toggle"),
-			),
-			key.NewBinding(
-				key.WithKeys("enter"),
-				key.WithHelp("enter", "confirm"),
-			),
-			key.NewBinding(
-				key.WithKeys("~"),
-				key.WithHelp("~", "already in dir"),
-			),
-			key.NewBinding(
-				key.WithKeys("esc"),
-				key.WithHelp("esc", "back"),
-			),
-		}
-	}
+	l := newList(items, repoDelegate{}, "Select repositories to clone")
 
 	return repoModel{list: l}
 }
@@ -247,7 +230,7 @@ func InitialRepoModel(cfg *config.Config, group string) ([]string, error) {
 		if m.quitting {
 			return nil, fmt.Errorf("aborted")
 		}
-		for _, item := range m.list.Items() {
+		for _, item := range m.list.VisibleItems() {
 			if i, ok := item.(repoItem); ok && i.selected {
 				selected = append(selected, i.url)
 			}

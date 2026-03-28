@@ -100,15 +100,7 @@ func (m manageGroupModel) buildList() list.Model {
 		}
 	}
 
-	const defaultWidth = 20
-	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = "Manage groups"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-	l.Styles.Title = titleStyle
-	l.Styles.PaginationStyle = paginationStyle
-	l.Styles.HelpStyle = helpStyle
-	l.Help.Styles = dimHelpStyles
+	l := newList(items, itemDelegate{}, "Manage groups")
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
@@ -117,11 +109,9 @@ func (m manageGroupModel) buildList() list.Model {
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
 	}
-
 	if m.width > 0 {
 		l.SetSize(m.width, listHeight)
 	}
-
 	return l
 }
 
@@ -136,15 +126,7 @@ func (m manageGroupModel) buildDetailList() list.Model {
 		}
 	}
 
-	const defaultWidth = 20
-	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = "Group: " + m.selectedGroup
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-	l.Styles.Title = titleStyle
-	l.Styles.PaginationStyle = paginationStyle
-	l.Styles.HelpStyle = helpStyle
-	l.Help.Styles = dimHelpStyles
+	l := newList(items, itemDelegate{}, "Group: "+m.selectedGroup)
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add repo")),
@@ -152,11 +134,9 @@ func (m manageGroupModel) buildDetailList() list.Model {
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
 	}
-
 	if m.width > 0 {
 		l.SetSize(m.width, listHeight)
 	}
-
 	return l
 }
 
@@ -176,25 +156,15 @@ func (m manageGroupModel) buildRepoAddList() list.Model {
 		}
 	}
 
-	const defaultWidth = 20
-	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = "Add repo to: " + m.selectedGroup
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-	l.Styles.Title = titleStyle
-	l.Styles.PaginationStyle = paginationStyle
-	l.Styles.HelpStyle = helpStyle
-	l.Help.Styles = dimHelpStyles
+	l := newList(items, itemDelegate{}, "Add repo to: "+m.selectedGroup)
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
 	}
-
 	if m.width > 0 {
 		l.SetSize(m.width, listHeight)
 	}
-
 	return l
 }
 
@@ -385,9 +355,7 @@ func (m manageGroupModel) updateAddRepoToGroup(msg tea.Msg) (tea.Model, tea.Cmd)
 					break
 				}
 			}
-			if err := config.Save(m.cfg); err != nil {
-				fmt.Println("Error saving config:", err)
-			}
+			logSaveErr(config.Save(m.cfg))
 			m.screen = mgScreenDetail
 			m.detailList = m.buildDetailList()
 			return m, nil
@@ -447,9 +415,7 @@ func (m manageGroupModel) updateAddRepos(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if len(selectedURLs) > 0 {
 			applyGroupToRepos(m.cfg, m.pendingGroup, selectedURLs)
-			if err := config.Save(m.cfg); err != nil {
-				fmt.Println("Error saving config:", err)
-			}
+			logSaveErr(config.Save(m.cfg))
 		}
 		m.screen = mgScreenList
 		m.list = m.buildList()
@@ -473,9 +439,7 @@ func (m manageGroupModel) updateRename(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-			if err := config.Save(m.cfg); err != nil {
-				fmt.Println("Error saving config:", err)
-			}
+			logSaveErr(config.Save(m.cfg))
 		}
 		m.screen = mgScreenList
 		m.list = m.buildList()
@@ -492,9 +456,7 @@ func (m manageGroupModel) updateConfirmDelete(msg tea.Msg) (tea.Model, tea.Cmd) 
 	if m.prompt.quitting {
 		if m.prompt.input.Value() == "yes" {
 			removeGroupFromAllRepos(m.cfg, m.selectedGroup)
-			if err := config.Save(m.cfg); err != nil {
-				fmt.Println("Error saving config:", err)
-			}
+			logSaveErr(config.Save(m.cfg))
 		}
 		m.screen = mgScreenList
 		m.list = m.buildList()
@@ -522,9 +484,7 @@ func (m manageGroupModel) updateConfirmRemoveRepo(msg tea.Msg) (tea.Model, tea.C
 					break
 				}
 			}
-			if err := config.Save(m.cfg); err != nil {
-				fmt.Println("Error saving config:", err)
-			}
+			logSaveErr(config.Save(m.cfg))
 		}
 		m.screen = mgScreenDetail
 		m.detailList = m.buildDetailList()

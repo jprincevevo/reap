@@ -54,7 +54,9 @@ func (m groupAddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m groupAddModel) View() tea.View {
 	if !m.ready {
-		return tea.NewView("")
+		v := tea.NewView("")
+		v.AltScreen = true
+		return v
 	}
 	if m.quitting {
 		return tea.NewView(quitTextStyle.Render("Cancelling..."))
@@ -70,16 +72,7 @@ func NewGroupAddModel(cfg *config.Config) groupAddModel {
 		items = append(items, repoItem{url: repo.URL, selected: false})
 	}
 
-	const defaultWidth = 20
-
-	l := list.New(items, repoDelegate{}, defaultWidth, listHeight)
-	l.Title = "Select repositories to add to the group"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-	l.Styles.Title = titleStyle
-	l.Styles.PaginationStyle = paginationStyle
-	l.Styles.HelpStyle = helpStyle
-	l.Help.Styles = dimHelpStyles
+	l := newList(items, repoDelegate{}, "Select repositories to add to the group")
 
 	return groupAddModel{list: l}
 }

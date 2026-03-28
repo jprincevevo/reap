@@ -15,7 +15,38 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-const listHeight = 14
+const (
+	listHeight       = 14
+	listDefaultWidth = 20
+
+	// showAllRepos is the sentinel group name that means "no group filter —
+	// show every configured repository". It appears as the first item in the
+	// group selection list and is matched in NewRepoModel to decide which
+	// repos to show.
+	showAllRepos = "Show all repos"
+)
+
+// logSaveErr prints a config save error to stdout. config.Save failures cannot
+// be surfaced through the TUI event loop, so stderr/stdout is the fallback.
+func logSaveErr(err error) {
+	if err != nil {
+		fmt.Println("Error saving config:", err)
+	}
+}
+
+// newList creates a list.Model with the shared visual style applied. Callers
+// set AdditionalShortHelpKeys and call SetSize after construction.
+func newList(items []list.Item, delegate list.ItemDelegate, title string) list.Model {
+	l := list.New(items, delegate, listDefaultWidth, listHeight)
+	l.Title = title
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(true)
+	l.Styles.Title = titleStyle
+	l.Styles.PaginationStyle = paginationStyle
+	l.Styles.HelpStyle = helpStyle
+	l.Help.Styles = dimHelpStyles
+	return l
+}
 
 const bannerText = `
   ██████╗ ███████╗ █████╗ ██████╗
@@ -35,6 +66,7 @@ var (
 	colorError   = lightDark(lipgloss.Color("#b91c1c"), lipgloss.Color("#ef4444")) // red (semantic override)
 	colorDim     = lightDark(lipgloss.Color("#9ca3af"), lipgloss.Color("#c9cdd4")) // gray
 	colorMuted   = lightDark(lipgloss.Color("#a05c00"), lipgloss.Color("#FFBF69")) // peach / dark amber
+	colorPurple  = lightDark(lipgloss.Color("#874BFD"), lipgloss.Color("#874BFD")) // purple (confirm dialog border)
 )
 
 var (
@@ -171,7 +203,7 @@ func (m groupModel) View() tea.View {
 
 func NewGroupModel(cfg *config.Config) groupModel {
 
-	groups := []list.Item{item("Show All")}
+	groups := []list.Item{item(showAllRepos)}
 
 	seenGroups := make(map[string]bool)
 	for _, repo := range cfg.Repos {
@@ -183,16 +215,7 @@ func NewGroupModel(cfg *config.Config) groupModel {
 		}
 	}
 
-	const defaultWidth = 20
-
-	l := list.New(groups, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = "Select a group"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-	l.Styles.Title = titleStyle
-	l.Styles.PaginationStyle = paginationStyle
-	l.Styles.HelpStyle = helpStyle
-	l.Help.Styles = dimHelpStyles
+	l := newList(groups, itemDelegate{}, "Select a group")
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "groups")),

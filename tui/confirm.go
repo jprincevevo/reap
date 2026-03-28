@@ -10,7 +10,7 @@ import (
 var (
 	dialogBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#874BFD")).
+			BorderForeground(colorPurple).
 			Padding(1, 0).
 			BorderTop(true).
 			BorderLeft(true).

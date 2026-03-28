@@ -76,20 +76,16 @@ func (m settingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if err != nil {
 					d = 0
 				}
-				m.cfg.DefaultDepth = d
-				if saveErr := config.Save(m.cfg); saveErr != nil {
-					fmt.Println("Error saving config:", saveErr)
-				}
+			m.cfg.DefaultDepth = d
+			logSaveErr(config.Save(m.cfg))
 				m.field = settingsFieldDir
 				m.prompt = NewPromptModel("Default clone directory (empty = current directory)", "")
 				if m.cfg.DefaultDir != "" {
 					m.prompt.input.SetValue(m.cfg.DefaultDir)
 				}
 			} else {
-				m.cfg.DefaultDir = m.prompt.input.Value()
-				if saveErr := config.Save(m.cfg); saveErr != nil {
-					fmt.Println("Error saving config:", saveErr)
-				}
+			m.cfg.DefaultDir = m.prompt.input.Value()
+			logSaveErr(config.Save(m.cfg))
 				m.field = settingsFieldPull
 			}
 			return m, nil
@@ -104,10 +100,8 @@ func (m settingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.pull = !m.pull
 				return m, nil
 			case "enter":
-				m.cfg.DefaultPull = m.pull
-				if saveErr := config.Save(m.cfg); saveErr != nil {
-					fmt.Println("Error saving config:", saveErr)
-				}
+			m.cfg.DefaultPull = m.pull
+			logSaveErr(config.Save(m.cfg))
 				m.goBack = true
 				return m, tea.Quit
 			}

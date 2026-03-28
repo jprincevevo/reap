@@ -120,6 +120,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+
 		// User quit (or still browsing) — propagate as-is.
 		return m, cmd
 
@@ -128,14 +129,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.repo = newRepo.(repoModel)
 
 		if m.repo.goBack {
-			// Esc on repo screen — return to home without quitting.
-			m.screen = appScreenHome
-			m.home = NewGroupModel(m.cfg)
-			if m.width > 0 {
-				m.home.list.SetSize(m.width, listHeight)
-				m.home.ready = true
-			}
-			return m, nil
+			return m.goHome()
 		}
 
 		// User confirmed selection, quit explicitly, or still browsing.
@@ -146,15 +140,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.groups = newGroups.(manageGroupModel)
 
 		if m.groups.goBack {
-			// User finished with group management — rebuild home to reflect
-			// any config changes made during the session.
-			m.screen = appScreenHome
-			m.home = NewGroupModel(m.cfg)
-			if m.width > 0 {
-				m.home.list.SetSize(m.width, listHeight)
-				m.home.ready = true
-			}
-			return m, nil
+			return m.goHome()
 		}
 
 		return m, cmd
@@ -164,13 +150,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.repos = newRepos.(manageRepoModel)
 
 		if m.repos.goBack {
-			m.screen = appScreenHome
-			m.home = NewGroupModel(m.cfg)
-			if m.width > 0 {
-				m.home.list.SetSize(m.width, listHeight)
-				m.home.ready = true
-			}
-			return m, nil
+			return m.goHome()
 		}
 
 		return m, cmd
@@ -183,13 +163,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		if m.settings.goBack {
-			m.screen = appScreenHome
-			m.home = NewGroupModel(m.cfg)
-			if m.width > 0 {
-				m.home.list.SetSize(m.width, listHeight)
-				m.home.ready = true
-			}
-			return m, nil
+			return m.goHome()
 		}
 
 		return m, cmd
@@ -199,19 +173,24 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pasteAdd = newPA.(pasteAddModel)
 
 		if m.pasteAdd.done || m.pasteAdd.cancelled {
-			// Rebuild home to reflect any config changes, then return there.
-			m.screen = appScreenHome
-			m.home = NewGroupModel(m.cfg)
-			if m.width > 0 {
-				m.home.list.SetSize(m.width, listHeight)
-				m.home.ready = true
-			}
-			return m, nil // discard the tea.Quit the child sent
+			return m.goHome() // discard the tea.Quit the child sent; rebuild home
 		}
 
 		return m, cmd
 	}
 
+	return m, nil
+}
+
+// goHome rebuilds the home screen from the current config (picking up any
+// changes made during a management session) and transitions to appScreenHome.
+func (m appModel) goHome() (appModel, tea.Cmd) {
+	m.screen = appScreenHome
+	m.home = NewGroupModel(m.cfg)
+	if m.width > 0 {
+		m.home.list.SetSize(m.width, listHeight)
+		m.home.ready = true
+	}
 	return m, nil
 }
 
@@ -262,7 +241,7 @@ func InitialAppModel(cfg *config.Config) ([]string, error) {
 	}
 
 	var selected []string
-	for _, listItem := range fm.repo.list.Items() {
+	for _, listItem := range fm.repo.list.VisibleItems() {
 		if ri, ok := listItem.(repoItem); ok && ri.selected {
 			selected = append(selected, ri.url)
 		}

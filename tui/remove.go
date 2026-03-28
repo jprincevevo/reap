@@ -68,16 +68,8 @@ func NewRemoveModel(cfg *config.Config) removeModel {
 		items = append(items, item(repo.URL))
 	}
 
-	const defaultWidth = 20
-
-	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = "Select a repository to remove"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
-	l.Styles.Title = titleStyle
-	l.Styles.PaginationStyle = paginationStyle
-	l.Styles.HelpStyle = helpStyle
-	l.Help.Styles = dimHelpStyles
+	l := newList(items, itemDelegate{}, "Select a repository to remove")
+	l.SetFilteringEnabled(false) // removal list intentionally has no filter
 
 	return removeModel{list: l}
 }

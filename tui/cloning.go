@@ -268,7 +268,7 @@ func InitialCloneModel(repos []string, depth int, dir string, pull bool) error {
 	s.Style = lipgloss.NewStyle().Foreground(colorMuted)
 
 	prog := progress.New(
-		progress.WithColors(lipgloss.Color("#FF9F1C"), lipgloss.Color("#2EC4B6")),
+		progress.WithColors(colorAccent, colorSuccess),
 		progress.WithoutPercentage(),
 	)
 

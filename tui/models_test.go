@@ -8,6 +8,7 @@ package tui
 import (
 	"testing"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/jprincevevo/reap/config"
@@ -92,7 +93,7 @@ func TestRepoItem_FilterValue_ReturnsURL(t *testing.T) {
 
 func TestNewRepoModel_ShowAll_IncludesAllRepos(t *testing.T) {
 	cfg := sampleCfg()
-	m := NewRepoModel(cfg, "Show All")
+	m := NewRepoModel(cfg, showAllRepos)
 	items := m.list.Items()
 
 	if len(items) != len(cfg.Repos) {
@@ -160,10 +161,10 @@ func TestNewGroupModel_AlwaysHasShowAllAsFirstItem(t *testing.T) {
 	m := NewGroupModel(&config.Config{})
 	items := m.list.Items()
 	if len(items) == 0 {
-		t.Fatal("expected at least 1 item (Show All), got 0")
+		t.Fatal("expected at least 1 item (Show all repos), got 0")
 	}
-	if got := string(items[0].(item)); got != "Show All" {
-		t.Errorf("items[0] = %q, want \"Show All\"", got)
+	if got := string(items[0].(item)); got != showAllRepos {
+		t.Errorf("items[0] = %q, want %q", got, showAllRepos)
 	}
 }
 
@@ -172,9 +173,9 @@ func TestNewGroupModel_DeduplicatesGroupNames(t *testing.T) {
 	m := NewGroupModel(sampleCfg())
 	items := m.list.Items()
 
-	// Expect: Show All, work, personal (3 items; "work" not duplicated)
+	// Expect: Show all repos, work, personal (3 items; "work" not duplicated)
 	if len(items) != 3 {
-		t.Fatalf("len(items) = %d, want 3 (Show All + work + personal)", len(items))
+		t.Fatalf("len(items) = %d, want 3 (Show all repos + work + personal)", len(items))
 	}
 	if got := string(items[1].(item)); got != "work" {
 		t.Errorf("items[1] = %q, want \"work\"", got)
@@ -187,7 +188,7 @@ func TestNewGroupModel_DeduplicatesGroupNames(t *testing.T) {
 func TestNewGroupModel_EmptyConfig_OnlyShowAll(t *testing.T) {
 	m := NewGroupModel(&config.Config{Repos: []config.Repo{}})
 	if n := len(m.list.Items()); n != 1 {
-		t.Errorf("len(items) = %d, want 1 (only Show All)", n)
+		t.Errorf("len(items) = %d, want 1 (only Show all repos)", n)
 	}
 }
 
@@ -197,7 +198,7 @@ func TestNewGroupModel_EmptyConfig_OnlyShowAll(t *testing.T) {
 
 func TestRepoModel_QuitKeys_SetQuitting(t *testing.T) {
 	for _, msg := range []tea.Msg{pressChar('q'), pressCtrl('c')} {
-		m := NewRepoModel(sampleCfg(), "Show All")
+		m := NewRepoModel(sampleCfg(), showAllRepos)
 		updated, _ := m.Update(msg)
 		rm := updated.(repoModel)
 		if !rm.quitting {
@@ -210,7 +211,7 @@ func TestRepoModel_QuitKeys_SetQuitting(t *testing.T) {
 }
 
 func TestRepoModel_Esc_SetsGoBack(t *testing.T) {
-	m := NewRepoModel(sampleCfg(), "Show All")
+	m := NewRepoModel(sampleCfg(), showAllRepos)
 	updated, _ := m.Update(pressKey(tea.KeyEscape))
 	rm := updated.(repoModel)
 	if !rm.goBack {
@@ -222,7 +223,7 @@ func TestRepoModel_Esc_SetsGoBack(t *testing.T) {
 }
 
 func TestRepoModel_Enter_QuitsWithoutFlags(t *testing.T) {
-	m := NewRepoModel(sampleCfg(), "Show All")
+	m := NewRepoModel(sampleCfg(), showAllRepos)
 	updated, _ := m.Update(pressKey(tea.KeyEnter))
 	rm := updated.(repoModel)
 	if rm.goBack {
@@ -235,7 +236,7 @@ func TestRepoModel_Enter_QuitsWithoutFlags(t *testing.T) {
 
 func TestRepoModel_Space_TogglesSelectedOnCurrentItem(t *testing.T) {
 	// alpha.git starts unselected; space should select it.
-	m := NewRepoModel(sampleCfg(), "Show All")
+	m := NewRepoModel(sampleCfg(), showAllRepos)
 	if m.list.Items()[0].(repoItem).selected {
 		t.Fatal("precondition failed: alpha.git should start unselected")
 	}
@@ -244,6 +245,42 @@ func TestRepoModel_Space_TogglesSelectedOnCurrentItem(t *testing.T) {
 	rm := updated.(repoModel)
 	if !rm.list.Items()[0].(repoItem).selected {
 		t.Error("space: item[0] selected = false, want true after toggle")
+	}
+}
+
+func TestRepoModel_FilterApplied_VisibleItemsRestrictedToMatches(t *testing.T) {
+	t.Parallel()
+	// alpha and beta are both selected; after filtering to "alpha", only alpha
+	// should appear in VisibleItems — beta must be excluded from any clone.
+	cfg := &config.Config{
+		Repos: []config.Repo{
+			{URL: "https://github.com/org/alpha.git", Selected: true},
+			{URL: "https://github.com/org/beta.git", Selected: true},
+		},
+	}
+	m := NewRepoModel(cfg, showAllRepos)
+
+	// Apply a filter directly via the list API (equivalent to the user typing
+	// "/alpha" then Enter in the TUI). SetFilterText sets FilterState to
+	// FilterApplied, which is the state present when the user presses Enter.
+	m.list.SetFilterText("alpha")
+
+	if m.list.FilterState() != list.FilterApplied {
+		t.Fatalf("FilterState = %v, want FilterApplied", m.list.FilterState())
+	}
+
+	visible := m.list.VisibleItems()
+	if len(visible) != 1 {
+		t.Fatalf("VisibleItems len = %d, want 1", len(visible))
+	}
+	if got := visible[0].(repoItem).url; got != "https://github.com/org/alpha.git" {
+		t.Errorf("visible item URL = %q, want alpha.git", got)
+	}
+
+	// Confirm that Items() still sees both repos — VisibleItems() is the scope
+	// restriction, not a mutation of the underlying slice.
+	if len(m.list.Items()) != 2 {
+		t.Errorf("Items() len = %d, want 2 (filter must not drop items)", len(m.list.Items()))
 	}
 }
 
@@ -269,9 +306,9 @@ func TestGroupModel_Enter_SetsChoiceToFirstItem(t *testing.T) {
 	if gm.choice == "" {
 		t.Fatal("enter: choice is empty, want non-empty")
 	}
-	// Cursor starts at index 0, which is always "Show All".
-	if gm.choice != "Show All" {
-		t.Errorf("choice = %q, want \"Show All\"", gm.choice)
+	// Cursor starts at index 0, which is always showAllRepos.
+	if gm.choice != showAllRepos {
+		t.Errorf("choice = %q, want %q", gm.choice, showAllRepos)
 	}
 }
 
@@ -398,7 +435,7 @@ func TestAppModel_SKey_TransitionsToSettingsScreen(t *testing.T) {
 
 func TestAppModel_HomeEnter_TransitionsToRepoScreen(t *testing.T) {
 	am := newTestAppModel(sampleCfg())
-	// Enter selects the first item ("Show All"), which transitions to appScreenRepo.
+	// Enter selects the first item (showAllRepos), which transitions to appScreenRepo.
 	updated, _ := am.Update(pressKey(tea.KeyEnter))
 	result := updated.(appModel)
 	if result.screen != appScreenRepo {
@@ -441,6 +478,41 @@ func TestAppModel_ReposGoBack_TransitionsToHome(t *testing.T) {
 	result := updated.(appModel)
 	if result.screen != appScreenHome {
 		t.Errorf("screen = %v, want appScreenHome", result.screen)
+	}
+}
+
+func TestAppModel_RepoScreen_FilterApplied_VisibleItemsRestrictedToMatches(t *testing.T) {
+	t.Parallel()
+	// Mirrors the same contract tested on repoModel directly, but exercised
+	// through the appModel path that InitialAppModel uses to collect results.
+	cfg := &config.Config{
+		Repos: []config.Repo{
+			{URL: "https://github.com/org/alpha.git", Selected: true},
+			{URL: "https://github.com/org/beta.git", Selected: true},
+		},
+	}
+	am := appModel{
+		cfg:    cfg,
+		screen: appScreenRepo,
+		repo:   NewRepoModel(cfg, showAllRepos),
+		width:  80,
+	}
+	am.repo.list.SetSize(80, listHeight)
+	am.repo.ready = true
+
+	// Apply a filter directly — puts FilterState into FilterApplied.
+	am.repo.list.SetFilterText("alpha")
+
+	visible := am.repo.list.VisibleItems()
+	if len(visible) != 1 {
+		t.Fatalf("VisibleItems len = %d, want 1", len(visible))
+	}
+	if got := visible[0].(repoItem).url; got != "https://github.com/org/alpha.git" {
+		t.Errorf("visible item URL = %q, want alpha.git", got)
+	}
+	// Confirm Items() still holds both (filter is non-destructive).
+	if len(am.repo.list.Items()) != 2 {
+		t.Errorf("Items() len = %d, want 2", len(am.repo.list.Items()))
 	}
 }
 

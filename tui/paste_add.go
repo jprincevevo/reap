@@ -125,15 +125,7 @@ func newPasteAddModel(cfg *config.Config, sanitizedURL, preselected string) past
 		}
 	}
 
-	const defaultWidth = 20
-	l := list.New(items, groupSelectDelegate{}, defaultWidth, listHeight)
-	l.Title = "Add to groups (optional)"
-	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(true)
-	l.Styles.Title = titleStyle
-	l.Styles.PaginationStyle = paginationStyle
-	l.Styles.HelpStyle = helpStyle
-	l.Help.Styles = dimHelpStyles
+	l := newList(items, groupSelectDelegate{}, "Add to groups (optional)")
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "toggle")),
@@ -187,9 +179,7 @@ func (m pasteAddModel) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.hasGroups {
 			// No groups exist — save immediately and finish.
 			addRepo(m.cfg, m.url)
-			if err := config.Save(m.cfg); err != nil {
-				fmt.Println("Error saving config:", err)
-			}
+			logSaveErr(config.Save(m.cfg))
 			m.done = true
 			return m, tea.Quit
 		}
@@ -247,12 +237,10 @@ func (m pasteAddModel) updateGroups(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		if err := config.Save(m.cfg); err != nil {
-			fmt.Println("Error saving config:", err)
-		}
-		m.done = true
-		return m, tea.Quit
-	}
+	logSaveErr(config.Save(m.cfg))
+	m.done = true
+	return m, tea.Quit
+}
 
 	var cmd tea.Cmd
 	m.groupList, cmd = m.groupList.Update(msg)
