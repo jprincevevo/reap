@@ -48,13 +48,16 @@ var rootCmd = &cobra.Command{
 			fmt.Printf("Created default config file at %s\n", configPath)
 		}
 
-		if len(cfg.Repos) == 0 {
-			fmt.Println("No repositories configured. Add one with `reap repo add <url>`.")
-			return
-		}
-
 		if depth == 0 && cfg.DefaultDepth > 0 {
 			depth = cfg.DefaultDepth
+		}
+
+		if cloneDir == "" && cfg.DefaultDir != "" {
+			cloneDir = cfg.DefaultDir
+		}
+
+		if !pullFlag && cfg.DefaultPull {
+			pullFlag = true
 		}
 
 		if len(args) > 0 {
@@ -65,12 +68,7 @@ var rootCmd = &cobra.Command{
 
 		<-updateDone
 
-		var selected []string
-		if cfg.HasGroups() {
-			selected, err = tui.InitialFlowModel(cfg)
-		} else {
-			selected, err = tui.InitialRepoModel(cfg, "Show All")
-		}
+		selected, err := tui.InitialAppModel(cfg)
 		if err != nil {
 			return
 		}

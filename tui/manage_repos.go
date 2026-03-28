@@ -49,7 +49,7 @@ type manageRepoModel struct {
 	remove       removeModel
 	width        int
 	ready        bool
-	done         bool
+	goBack       bool
 	selectedRepo string
 	detailList   list.Model
 	groupList    list.Model
@@ -203,8 +203,11 @@ func (m manageRepoModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c", "q":
-			m.done = true
+		case "ctrl+c":
+			return m, tea.Quit
+
+		case "q", "esc":
+			m.goBack = true
 			return m, tea.Quit
 
 		case "enter":
@@ -255,7 +258,6 @@ func (m manageRepoModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+c":
-			m.done = true
 			return m, tea.Quit
 
 		case "q", "esc":
@@ -302,7 +304,6 @@ func (m manageRepoModel) updateAddToGroup(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+c":
-			m.done = true
 			return m, tea.Quit
 
 		case "q", "esc":
@@ -454,20 +455,36 @@ func (m manageRepoModel) View() tea.View {
 		v.AltScreen = true
 		return v
 	}
-	if m.done {
+	if m.goBack {
 		return tea.NewView("")
+	}
+	// Onboarding: no repos configured yet.
+	if len(m.list.Items()) == 0 {
+		content := "\n" + titleStyle.Render("Manage repositories") + "\n\n" +
+			"  No repositories configured yet.\n\n" +
+			"  Press a to add your first repository, or run:\n" +
+			"    reap repo add <url>\n\n" +
+			"  Press q to go back.\n"
+		v := tea.NewView(content)
+		v.AltScreen = true
+		return v
 	}
 	v := tea.NewView("\n" + m.list.View())
 	v.AltScreen = true
 	return v
 }
 
-func InitialManageReposModel(cfg *config.Config) error {
-	m := manageRepoModel{
-		cfg: cfg,
-	}
+// newManageRepoModel constructs a manageRepoModel ready for embedding inside
+// a parent program (e.g. appModel). The list is built immediately; sizing
+// happens when the parent forwards a WindowSizeMsg or sets dimensions directly.
+func newManageRepoModel(cfg *config.Config) manageRepoModel {
+	m := manageRepoModel{cfg: cfg}
 	m.list = m.buildList()
+	return m
+}
 
+func InitialManageReposModel(cfg *config.Config) error {
+	m := newManageRepoModel(cfg)
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err

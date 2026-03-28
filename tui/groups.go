@@ -8,6 +8,7 @@ import (
 
 	"github.com/jprincevevo/reap/config"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -65,10 +66,11 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 }
 
 type groupModel struct {
-	list     list.Model
-	choice   string
-	quitting bool
-	ready    bool
+	list      list.Model
+	choice    string
+	quitting  bool
+	ready     bool
+	repoCount int // total repos in config, used to show onboarding when zero
 }
 
 func (m groupModel) Init() tea.Cmd {
@@ -118,6 +120,17 @@ func (m groupModel) View() tea.View {
 	if m.quitting {
 		return tea.NewView(quitTextStyle.Render("Cancelling..."))
 	}
+	// Onboarding: no repos configured yet.
+	if m.repoCount == 0 {
+		content := "\n" + titleStyle.Render("Welcome to reap") + "\n\n" +
+			"  No repositories configured yet.\n\n" +
+			"  Press r to open repo management, or run:\n" +
+			"    reap repo add <url>\n\n" +
+			"  Press q to quit.\n"
+		v := tea.NewView(content)
+		v.AltScreen = true
+		return v
+	}
 	v := tea.NewView("\n" + m.list.View())
 	v.AltScreen = true
 	return v
@@ -146,8 +159,15 @@ func NewGroupModel(cfg *config.Config) groupModel {
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
+	l.AdditionalShortHelpKeys = func() []key.Binding {
+		return []key.Binding{
+			key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "groups")),
+			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "repos")),
+			key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "settings")),
+		}
+	}
 
-	return groupModel{list: l}
+	return groupModel{list: l, repoCount: len(cfg.Repos)}
 }
 
 func InitialGroupModel(cfg *config.Config) (string, error) {

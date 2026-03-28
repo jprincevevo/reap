@@ -15,6 +15,8 @@ const (
 
 type Config struct {
 	DefaultDepth int    `yaml:"default_depth"`
+	DefaultDir   string `yaml:"default_dir,omitempty"`
+	DefaultPull  bool   `yaml:"default_pull,omitempty"`
 	Repos        []Repo `yaml:"repos"`
 }
 

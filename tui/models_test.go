@@ -341,41 +341,105 @@ func TestConfirmModel_QuitKeys_SetQuitting(t *testing.T) {
 }
 
 // ==============================
-// flowModel.Update
+// appModel.Update
 // ==============================
 
-func TestFlowModel_WindowSizeMsg_StoresWidth(t *testing.T) {
-	cfg := sampleCfg()
-	fm := flowModel{cfg: cfg, screen: flowScreenGroup, group: NewGroupModel(cfg)}
+// newTestAppModel builds an appModel that is ready to receive key input
+// (home list sized and marked ready).
+func newTestAppModel(cfg *config.Config) appModel {
+	m := appModel{
+		cfg:    cfg,
+		screen: appScreenHome,
+		home:   NewGroupModel(cfg),
+		width:  80,
+	}
+	m.home.list.SetSize(80, listHeight)
+	m.home.ready = true
+	return m
+}
 
-	updated, _ := fm.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
-	result := updated.(flowModel)
+func TestAppModel_WindowSizeMsg_StoresWidth(t *testing.T) {
+	cfg := sampleCfg()
+	am := newTestAppModel(cfg)
+
+	updated, _ := am.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	result := updated.(appModel)
 	if result.width != 120 {
 		t.Errorf("width = %d, want 120", result.width)
 	}
 }
 
-func TestFlowModel_GroupEnter_TransitionsToRepoScreen(t *testing.T) {
-	cfg := sampleCfg()
-	fm := flowModel{cfg: cfg, screen: flowScreenGroup, group: NewGroupModel(cfg)}
-
-	// Pressing enter selects the first group item ("Show All") and should
-	// cause the flow to advance to the repo screen.
-	updated, _ := fm.Update(pressKey(tea.KeyEnter))
-	result := updated.(flowModel)
-	if result.screen != flowScreenRepo {
-		t.Errorf("screen = %v, want flowScreenRepo", result.screen)
+func TestAppModel_GKey_TransitionsToGroupsScreen(t *testing.T) {
+	am := newTestAppModel(sampleCfg())
+	updated, _ := am.Update(pressChar('g'))
+	result := updated.(appModel)
+	if result.screen != appScreenGroups {
+		t.Errorf("screen = %v, want appScreenGroups", result.screen)
 	}
 }
 
-func TestFlowModel_RepoEsc_TransitionsBackToGroupScreen(t *testing.T) {
-	cfg := sampleCfg()
-	fm := flowModel{cfg: cfg, screen: flowScreenRepo, repo: NewRepoModel(cfg, "Show All")}
+func TestAppModel_RKey_TransitionsToReposScreen(t *testing.T) {
+	am := newTestAppModel(sampleCfg())
+	updated, _ := am.Update(pressChar('r'))
+	result := updated.(appModel)
+	if result.screen != appScreenRepos {
+		t.Errorf("screen = %v, want appScreenRepos", result.screen)
+	}
+}
 
-	updated, _ := fm.Update(pressKey(tea.KeyEscape))
-	result := updated.(flowModel)
-	if result.screen != flowScreenGroup {
-		t.Errorf("screen = %v, want flowScreenGroup", result.screen)
+func TestAppModel_SKey_TransitionsToSettingsScreen(t *testing.T) {
+	am := newTestAppModel(sampleCfg())
+	updated, _ := am.Update(pressChar('s'))
+	result := updated.(appModel)
+	if result.screen != appScreenSettings {
+		t.Errorf("screen = %v, want appScreenSettings", result.screen)
+	}
+}
+
+func TestAppModel_HomeEnter_TransitionsToRepoScreen(t *testing.T) {
+	am := newTestAppModel(sampleCfg())
+	// Enter selects the first item ("Show All"), which transitions to appScreenRepo.
+	updated, _ := am.Update(pressKey(tea.KeyEnter))
+	result := updated.(appModel)
+	if result.screen != appScreenRepo {
+		t.Errorf("screen = %v, want appScreenRepo", result.screen)
+	}
+}
+
+func TestAppModel_GroupsGoBack_TransitionsToHome(t *testing.T) {
+	cfg := sampleCfg()
+	am := appModel{
+		cfg:    cfg,
+		screen: appScreenGroups,
+		groups: newManageGroupModel(cfg),
+		width:  80,
+	}
+	am.groups.list.SetSize(80, listHeight)
+	am.groups.ready = true
+
+	// q at groups list sets goBack = true, which appModel intercepts.
+	updated, _ := am.Update(pressChar('q'))
+	result := updated.(appModel)
+	if result.screen != appScreenHome {
+		t.Errorf("screen = %v, want appScreenHome", result.screen)
+	}
+}
+
+func TestAppModel_ReposGoBack_TransitionsToHome(t *testing.T) {
+	cfg := sampleCfg()
+	am := appModel{
+		cfg:    cfg,
+		screen: appScreenRepos,
+		repos:  newManageRepoModel(cfg),
+		width:  80,
+	}
+	am.repos.list.SetSize(80, listHeight)
+	am.repos.ready = true
+
+	updated, _ := am.Update(pressChar('q'))
+	result := updated.(appModel)
+	if result.screen != appScreenHome {
+		t.Errorf("screen = %v, want appScreenHome", result.screen)
 	}
 }
 
@@ -401,20 +465,21 @@ func TestPromptModel_Constructor_IsReady(t *testing.T) {
 // manageGroupModel — list screen
 // ==============================
 
-func newManageGroupModel(cfg *config.Config) manageGroupModel {
-	m := manageGroupModel{cfg: cfg}
-	m.list = m.buildList()
-	return m
+func TestManageGroupModel_List_QSetsGoBack(t *testing.T) {
+	m := newManageGroupModel(sampleCfg())
+	updated, _ := m.Update(pressChar('q'))
+	result := updated.(manageGroupModel)
+	if !result.goBack {
+		t.Error("q: goBack = false, want true")
+	}
 }
 
-func TestManageGroupModel_List_QuitKeys(t *testing.T) {
-	for _, msg := range []tea.Msg{pressChar('q'), pressCtrl('c')} {
-		m := newManageGroupModel(sampleCfg())
-		updated, _ := m.Update(msg)
-		result := updated.(manageGroupModel)
-		if !result.done {
-			t.Errorf("%T: done = false, want true", msg)
-		}
+func TestManageGroupModel_List_CtrlCHardQuits(t *testing.T) {
+	m := newManageGroupModel(sampleCfg())
+	updated, _ := m.Update(pressCtrl('c'))
+	result := updated.(manageGroupModel)
+	if result.goBack {
+		t.Error("ctrl+c: goBack = true, want false (hard quit)")
 	}
 }
 
@@ -536,20 +601,21 @@ func TestManageGroupModel_BuildDetailList_TitleIncludesGroupName(t *testing.T) {
 // manageRepoModel — list screen
 // ==============================
 
-func newManageRepoModel(cfg *config.Config) manageRepoModel {
-	m := manageRepoModel{cfg: cfg}
-	m.list = m.buildList()
-	return m
+func TestManageRepoModel_List_QSetsGoBack(t *testing.T) {
+	m := newManageRepoModel(sampleCfg())
+	updated, _ := m.Update(pressChar('q'))
+	result := updated.(manageRepoModel)
+	if !result.goBack {
+		t.Error("q: goBack = false, want true")
+	}
 }
 
-func TestManageRepoModel_List_QuitKeys(t *testing.T) {
-	for _, msg := range []tea.Msg{pressChar('q'), pressCtrl('c')} {
-		m := newManageRepoModel(sampleCfg())
-		updated, _ := m.Update(msg)
-		result := updated.(manageRepoModel)
-		if !result.done {
-			t.Errorf("%T: done = false, want true", msg)
-		}
+func TestManageRepoModel_List_CtrlCHardQuits(t *testing.T) {
+	m := newManageRepoModel(sampleCfg())
+	updated, _ := m.Update(pressCtrl('c'))
+	result := updated.(manageRepoModel)
+	if result.goBack {
+		t.Error("ctrl+c: goBack = true, want false (hard quit)")
 	}
 }
 
@@ -672,5 +738,79 @@ func TestManageRepoModel_BuildGroupList_RepoWithNoGroupsSeesAll(t *testing.T) {
 	gl := m.buildGroupList()
 	if len(gl.Items()) != 2 {
 		t.Fatalf("group list has %d items, want 2 (all groups)", len(gl.Items()))
+	}
+}
+
+// ==============================
+// settingsModel
+// ==============================
+
+func TestSettingsModel_Esc_SetsGoBack(t *testing.T) {
+	m := newSettingsModel(&config.Config{})
+	updated, _ := m.Update(pressKey(tea.KeyEscape))
+	sm := updated.(settingsModel)
+	if !sm.goBack {
+		t.Error("esc: goBack = false, want true")
+	}
+	if sm.quitting {
+		t.Error("esc: quitting = true, want false")
+	}
+}
+
+func TestSettingsModel_CtrlC_SetsQuitting(t *testing.T) {
+	m := newSettingsModel(&config.Config{})
+	updated, _ := m.Update(pressCtrl('c'))
+	sm := updated.(settingsModel)
+	if !sm.quitting {
+		t.Error("ctrl+c: quitting = false, want true")
+	}
+	if sm.goBack {
+		t.Error("ctrl+c: goBack = true, want false")
+	}
+}
+
+func TestSettingsModel_EnterOnDepth_AdvancesToDirField(t *testing.T) {
+	m := newSettingsModel(&config.Config{})
+	if m.field != settingsFieldDepth {
+		t.Fatal("precondition: expected settingsFieldDepth as initial field")
+	}
+	updated, _ := m.Update(pressKey(tea.KeyEnter))
+	sm := updated.(settingsModel)
+	if sm.field != settingsFieldDir {
+		t.Errorf("field = %v, want settingsFieldDir", sm.field)
+	}
+}
+
+func TestSettingsModel_EnterOnDir_AdvancesToPullField(t *testing.T) {
+	m := newSettingsModel(&config.Config{})
+	m.field = settingsFieldDir
+	m.prompt = NewPromptModel("Default clone directory", "")
+	updated, _ := m.Update(pressKey(tea.KeyEnter))
+	sm := updated.(settingsModel)
+	if sm.field != settingsFieldPull {
+		t.Errorf("field = %v, want settingsFieldPull", sm.field)
+	}
+}
+
+func TestSettingsModel_PullToggle_SpaceToggles(t *testing.T) {
+	m := newSettingsModel(&config.Config{DefaultPull: false})
+	m.field = settingsFieldPull
+	if m.pull {
+		t.Fatal("precondition: pull should start false")
+	}
+	updated, _ := m.Update(pressKey(tea.KeySpace))
+	sm := updated.(settingsModel)
+	if !sm.pull {
+		t.Error("space: pull = false, want true after toggle")
+	}
+}
+
+func TestSettingsModel_PullToggle_EnterSetsGoBack(t *testing.T) {
+	m := newSettingsModel(&config.Config{})
+	m.field = settingsFieldPull
+	updated, _ := m.Update(pressKey(tea.KeyEnter))
+	sm := updated.(settingsModel)
+	if !sm.goBack {
+		t.Error("enter on pull: goBack = false, want true")
 	}
 }

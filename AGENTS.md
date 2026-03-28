@@ -19,8 +19,8 @@ reap/
 ├── config/
 │   └── config.go        # Config struct, Load/Save, path resolution
 ├── tui/
-│   ├── flow.go          # Combined group→repo flow model (single program, no flash)
-│   ├── groups.go        # Group-selection list screen
+│   ├── app.go           # Root appModel — single program covering all screens
+│   ├── groups.go        # Group-selection list screen (home screen / clone entry point)
 │   ├── repos.go         # Repo-selection (multi-select) screen
 │   ├── cloning.go       # Parallel cloning progress screen
 │   ├── confirm.go       # Yes/No dialog (used before cloning inside a git repo)
@@ -28,6 +28,7 @@ reap/
 │   ├── groups_add.go    # Repo multi-select screen used when creating a group
 │   ├── manage_groups.go # Interactive group management TUI (reap group)
 │   ├── manage_repos.go  # Interactive repo management TUI (reap repo)
+│   ├── settings.go      # Settings form screen (depth, dir, pull toggle)
 │   ├── prompt.go        # Text-input prompt sub-model shared by management screens
 │   └── models_test.go   # Headless unit tests for TUI model constructors and Update logic
 ├── version/
@@ -59,7 +60,9 @@ Nothing in `.workspace/` is part of the production codebase and it is never comm
 - **Structure:**
 
 ```yaml
-default_depth: 1           # optional; used as --depth fallback (see below)
+default_depth: 1           # optional; used as --depth fallback
+default_dir: ~/projects    # optional; used as --dir fallback
+default_pull: false        # optional; used as --pull fallback
 repos:
   - url: https://github.com/owner/repo.git
     selected: true
@@ -70,8 +73,8 @@ repos:
 
 - `config.Load()` returns `(*Config, bool, error)` — the bool is `true` when the file was just created
 - `config.Save(cfg)` marshals back to YAML and writes atomically via a temp file + `os.Rename`
-- `cfg.HasGroups()` returns true if any repo has at least one group; used by the root command to decide whether to show the group-selection screen
-- `cfg.DefaultDepth` is applied as a fallback for the `--depth` flag: if `--depth` is `0` (not set by the user) and `default_depth` is nonzero in the config, `default_depth` is used for all clones in that run
+- `cfg.HasGroups()` returns true if any repo has at least one group
+- `cfg.DefaultDepth` is applied as a fallback for `--depth`; `cfg.DefaultDir` for `--dir`; `cfg.DefaultPull` for `--pull` — all applied only when the flag was not explicitly set by the user
 
 ---
 
@@ -79,7 +82,7 @@ repos:
 
 Most TUI screens follow the standard Bubble Tea pattern: a model struct with `Init()`, `Update()`, and `View()` methods, plus a `New*Model()` constructor and an `Initial*Model()` function that runs `tea.NewProgram(m).Run()` and extracts the result from the final model state.
 
-The exception is the group→repo selection flow, which uses a **parent model** (`flowModel` in `tui/flow.go`) — see below.
+The exception is the main `reap` command, which uses a **single persistent program** (`appModel` in `tui/app.go`) covering all screens for the full process lifetime — see below.
 
 ### Shared styles (defined in `tui/groups.go`)
 
@@ -116,15 +119,41 @@ func (m groupModel) View() tea.View {
 
 The alt screen should only be set while the list is actually visible — do not set it on the "quitting" or "choice confirmed" frames, so the terminal is restored cleanly on exit. Also set it on the initial `!m.ready` frame (before `WindowSizeMsg` arrives) so the program enters alt screen immediately and avoids a one-frame flash of the underlying terminal.
 
-### `flowModel` — flash-free multi-screen parent (`tui/flow.go`)
+### `appModel` — single persistent root model (`tui/app.go`)
 
-Running two `tea.Program` instances back-to-back (group screen then repo screen) causes a visible flash: the first program's `close()` unconditionally exits the alt screen, briefly exposing the normal terminal before the second program enters alt screen.
+Running multiple `tea.Program` instances back-to-back causes a visible flash: each program's `close()` unconditionally exits the alt screen, briefly exposing the normal terminal before the next program enters.
 
-`flowModel` solves this by hosting both screens inside a **single** `tea.Program`. The key trick is in `Update`: when the group model sets `m.choice` (user pressed enter), `flowModel` intercepts the `tea.Quit` the sub-model would have propagated, transitions `screen` to `flowScreenRepo`, and returns `nil` — keeping the program alive. The repo model's `goBack` case is handled symmetrically. Only an actual quit (`q`, `ctrl+c`) or a confirmed repo selection propagates `tea.Quit` to end the program.
+`appModel` solves this by hosting **every screen** inside a single `tea.Program` for the full lifetime of the `reap` process. The screen enum is:
 
-When transitioning, `flowModel` immediately sizes the new sub-model using the stored `m.width` and sets `ready = true`, so the next `View()` renders the list directly with no blank frame.
+```go
+type appScreen int
+const (
+    appScreenHome     appScreen = iota // group selection — always the anchor
+    appScreenRepo                      // repo selection (after group chosen)
+    appScreenGroups                    // manageGroupModel
+    appScreenRepos                     // manageRepoModel
+    appScreenSettings                  // settingsModel
+)
+```
 
-`cmd/root.go` calls `tui.InitialFlowModel(cfg)` when `cfg.HasGroups()`, and falls back to the standalone `tui.InitialRepoModel(cfg, "Show All")` when there are no groups (no transition, no flash risk).
+The home screen is the group-selection list (`groupModel`). From there:
+- `enter` → repo selection → clone flow → program exits
+- `g` → manage groups (returns on `q`/`esc`)
+- `r` → manage repos (returns on `q`/`esc`)
+- `s` → settings (returns on `esc` or after last field)
+- `q`/`esc` → exits program
+
+The `Update` method intercepts `g`, `r`, `s` **before** forwarding to `groupModel`, but only when the list is not in filter mode (`list.FilterState() != list.Filtering`). Sub-models signal the parent via `goBack bool` rather than propagating `tea.Quit`; the parent discards the `tea.Quit` and transitions screens.
+
+`cmd/root.go` calls `tui.InitialAppModel(cfg)` for the main command, which returns the selected repo URLs when the user confirms a clone.
+
+### Onboarding screens
+
+Three onboarding views replace empty lists when there is nothing to show:
+
+- **Home screen (`groupModel.View()`)**: if `m.repoCount == 0`, shows a welcome message with instructions to press `r` or run `reap repo add <url>`.
+- **Group management (`manageGroupModel.View()`)**: if `len(m.list.Items()) == 0`, shows an explanation of groups with `a` to create the first one.
+- **Repo management (`manageRepoModel.View()`)**: if `len(m.list.Items()) == 0`, shows instructions to press `a` or run `reap repo add <url>`.
 
 ### Key naming gotcha
 
@@ -144,7 +173,11 @@ Always use the named form in switch cases. Using `" "` for space means the handl
 
 ### Management screens (`tui/manage_groups.go`, `tui/manage_repos.go`)
 
-`reap group` and `reap repo` (with no subcommand) launch interactive management TUIs backed by `manageGroupModel` and `manageRepoModel` respectively. Both follow a multi-screen parent pattern (similar to `flowModel`) where all screens live inside a single `tea.Program`:
+`reap group` and `reap repo` (with no subcommand) launch interactive management TUIs backed by `manageGroupModel` and `manageRepoModel` respectively. Both follow a multi-screen parent pattern (similar to `appModel`) where all screens live inside a single `tea.Program`.
+
+When embedded in `appModel` (reached via `g`/`r` from the home screen), these models signal return via `goBack bool` instead of quitting the program. When the user presses `q` or `esc` at the top-level list screen (`mgScreenList` / `mrScreenList`), `goBack = true` and `tea.Quit` is returned. `appModel` intercepts this, rebuilds the home screen from the updated config, and transitions back without the program exiting. Pressing `ctrl+c` from any screen is a hard quit (no `goBack` flag) that propagates `tea.Quit` all the way to the program.
+
+Both models expose a package-level `newManageGroupModel(cfg)` / `newManageRepoModel(cfg)` constructor for use by `appModel` during transitions.
 
 **`reap group` key map:**
 
@@ -192,9 +225,12 @@ The root `reap` command (no subcommand) runs the following sequence:
 
 1. **Self-update check** — `checkForUpdates()` is launched as a goroutine immediately. A `close(updateDone)` channel signals when it finishes (including its 2-second sleep). The check is a no-op when `version.Version == "dev"` so local `go run .` builds stay quiet.
 2. **Config load** — `config.Load()` is called; prints a message if the file was just created.
-3. **Early exits** — returns immediately if no repos are configured, or if bare URL args were provided (direct clone, no TUI).
-4. **`<-updateDone`** — blocks until the update goroutine finishes before opening any TUI screen. This prevents `fmt.Printf` from the banner racing with Bubble Tea's terminal ownership.
-5. **TUI flow** — runs `InitialFlowModel` (groups) or `InitialRepoModel` (no groups), then `cloneRepos`.
+3. **Config defaults** — `DefaultDepth`, `DefaultDir`, and `DefaultPull` from the config are applied when the corresponding CLI flags were not explicitly set.
+4. **Early exit for direct args** — if bare URL args were provided, clones them directly without a TUI.
+5. **`<-updateDone`** — blocks until the update goroutine finishes before opening any TUI screen.
+6. **TUI** — runs `InitialAppModel(cfg)`, then `cloneRepos` if repos were selected.
+
+Note: the empty-config guard (`len(cfg.Repos) == 0`) has been removed. The TUI now handles the empty state with an onboarding screen.
 
 **Flags:**
 
@@ -271,15 +307,17 @@ TUI model logic is tested headlessly by calling `Update` with hand-crafted `tea.
 - `repoModel.Update` — quit keys, esc (goBack), enter, space toggle
 - `groupModel.Update` — quit keys, enter sets choice
 - `confirmModel.Update` — default button, left/right, enter on Yes/No, quit keys
-- `flowModel.Update` — WindowSizeMsg, group enter → repo screen, repo esc → group screen
+- `appModel.Update` — WindowSizeMsg stores width, g/r/s key transitions, enter on group list → repo screen, goBack from management → home screen
 - `promptModel` constructor — `Focused()` returns true, `ready` is true
-- `manageGroupModel` — list screen key routing (enter/a/r/d/q), detail screen key routing (esc/q/r), `buildDetailList` content and title
-- `manageRepoModel` — list screen key routing (enter/a/q), detail screen key routing (esc/a/r), add-to-group esc, `buildDetailList` content, `buildGroupList` exclusion logic
+- `manageGroupModel` — list screen key routing (enter/a/r/d/q), q sets goBack (not done), detail screen key routing (esc/q/r), `buildDetailList` content and title
+- `manageRepoModel` — list screen key routing (enter/a/q), q sets goBack (not done), detail screen key routing (esc/a/r), add-to-group esc, `buildDetailList` content, `buildGroupList` exclusion logic
+- `settingsModel` — esc sets goBack, ctrl+c sets quitting, enter on depth advances to dir field, enter on dir advances to pull field, space toggles pull, enter on pull sets goBack
 
 ### What is not tested
 
 - The cloning screen (`tui/cloning.go`) is I/O-bound and requires a live terminal
 - The cobra `Run` closures in `cmd/repo.go` and `cmd/group.go` are thin orchestrators (load → call helper → save → print); their correctness is implicitly covered by the logic helper tests
+- `settingsModel` config persistence (`config.Save` calls) — these require a real filesystem and are covered by integration testing
 
 ---
 

@@ -76,7 +76,7 @@ type manageGroupModel struct {
 	groupAdd      groupAddModel
 	width         int
 	ready         bool
-	done          bool
+	goBack        bool
 	pendingGroup  string
 	selectedGroup string
 	selectedRepo  string
@@ -193,8 +193,11 @@ func (m manageGroupModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c", "q":
-			m.done = true
+		case "ctrl+c":
+			return m, tea.Quit
+
+		case "q", "esc":
+			m.goBack = true
 			return m, tea.Quit
 
 		case "enter":
@@ -258,7 +261,6 @@ func (m manageGroupModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "ctrl+c":
-			m.done = true
 			return m, tea.Quit
 
 		case "q", "esc":
@@ -444,20 +446,36 @@ func (m manageGroupModel) View() tea.View {
 		v.AltScreen = true
 		return v
 	}
-	if m.done {
+	if m.goBack {
 		return tea.NewView("")
+	}
+	// Onboarding: no groups defined yet.
+	if len(m.list.Items()) == 0 {
+		content := "\n" + titleStyle.Render("Manage groups") + "\n\n" +
+			"  No groups defined yet.\n\n" +
+			"  Groups let you clone subsets of your repos at once.\n" +
+			"  Press a to create your first group.\n\n" +
+			"  Press q to go back.\n"
+		v := tea.NewView(content)
+		v.AltScreen = true
+		return v
 	}
 	v := tea.NewView("\n" + m.list.View())
 	v.AltScreen = true
 	return v
 }
 
-func InitialManageGroupsModel(cfg *config.Config) error {
-	m := manageGroupModel{
-		cfg: cfg,
-	}
+// newManageGroupModel constructs a manageGroupModel ready for embedding inside
+// a parent program (e.g. appModel). The list is built immediately; sizing
+// happens when the parent forwards a WindowSizeMsg or sets dimensions directly.
+func newManageGroupModel(cfg *config.Config) manageGroupModel {
+	m := manageGroupModel{cfg: cfg}
 	m.list = m.buildList()
+	return m
+}
 
+func InitialManageGroupsModel(cfg *config.Config) error {
+	m := newManageGroupModel(cfg)
 	p := tea.NewProgram(m)
 	_, err := p.Run()
 	return err
