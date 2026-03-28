@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/jprincevevo/reap/config"
 
@@ -43,7 +44,9 @@ func (m appModel) Init() tea.Cmd {
 }
 
 func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	log.Printf("screen=%d msg=%T %+v", m.screen, msg, msg)
+	if os.Getenv("REAP_DEBUG") != "" {
+		log.Printf("screen=%d msg=%T %+v", m.screen, msg, msg)
+	}
 
 	// Always capture the terminal width so we can immediately size new screens.
 	if wsm, ok := msg.(tea.WindowSizeMsg); ok {
