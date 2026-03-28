@@ -63,11 +63,11 @@ var configImportCmd = &cobra.Command{
 		repoCount := 0
 		groupCount := 0
 		for _, repo := range imported.Repos {
-			if addRepo(cfg, repo.URL) {
+			if cfg.AddRepo(repo.URL) {
 				repoCount++
 			}
 			for _, g := range repo.Groups {
-				groupCount += applyGroupToRepos(cfg, g.Name, []string{repo.URL})
+				groupCount += cfg.ApplyGroupToRepos(g.Name, []string{repo.URL})
 			}
 		}
 

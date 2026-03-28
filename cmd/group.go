@@ -43,7 +43,7 @@ var addGroupCmd = &cobra.Command{
 			return
 		}
 
-		modified := applyGroupToRepos(cfg, groupName, selectedRepos)
+		modified := cfg.ApplyGroupToRepos(groupName, selectedRepos)
 
 		if err := config.Save(cfg); err != nil {
 			fmt.Println("Error saving config:", err)
@@ -67,7 +67,7 @@ var removeGroupCmd = &cobra.Command{
 			return
 		}
 
-		if removeGroupFromAllRepos(cfg, groupName) == 0 {
+		if cfg.RemoveGroupFromAllRepos(groupName) == 0 {
 			fmt.Printf("Group %q not found in any repository.\n", groupName)
 			return
 		}
@@ -91,7 +91,7 @@ var listGroupsCmd = &cobra.Command{
 			return
 		}
 
-		names := uniqueGroupNames(cfg)
+		names := cfg.UniqueGroupNames()
 		if len(names) == 0 {
 			fmt.Println("No groups configured.")
 			return

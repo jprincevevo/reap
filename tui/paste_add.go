@@ -178,7 +178,7 @@ func (m pasteAddModel) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if !m.hasGroups {
 			// No groups exist — save immediately and finish.
-			addRepo(m.cfg, m.url)
+			m.cfg.AddRepo(m.url)
 			logSaveErr(config.Save(m.cfg))
 			m.done = true
 			return m, tea.Quit
@@ -221,7 +221,7 @@ func (m pasteAddModel) updateGroups(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "enter":
-		addRepo(m.cfg, m.url)
+		m.cfg.AddRepo(m.url)
 		for _, listItem := range m.groupList.Items() {
 			gi, ok := listItem.(groupSelectItem)
 			if !ok || !gi.selected {

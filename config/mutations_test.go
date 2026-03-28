@@ -1,29 +1,27 @@
-package cmd
+package config
 
 import (
 	"reflect"
 	"testing"
-
-	"github.com/jprincevevo/reap/config"
 )
 
-// helpers ----------------------------------------------------------------
+// ---- helpers ---------------------------------------------------------------
 
-func repos(urls ...string) []config.Repo {
-	r := make([]config.Repo, len(urls))
+func makeRepos(urls ...string) []Repo {
+	r := make([]Repo, len(urls))
 	for i, u := range urls {
-		r[i] = config.Repo{URL: u, Selected: true}
+		r[i] = Repo{URL: u, Selected: true}
 	}
 	return r
 }
 
-func cfg(urls ...string) *config.Config {
-	return &config.Config{Repos: repos(urls...)}
+func makeCfg(urls ...string) *Config {
+	return &Config{Repos: makeRepos(urls...)}
 }
 
-// addRepo ----------------------------------------------------------------
+// ---- AddRepo ---------------------------------------------------------------
 
-func TestAddRepo(t *testing.T) {
+func TestConfig_AddRepo(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -62,12 +60,12 @@ func TestAddRepo(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			c := cfg(tc.existing...)
+			c := makeCfg(tc.existing...)
 
-			got := addRepo(c, tc.add)
+			got := c.AddRepo(tc.add)
 
 			if got != tc.wantAdded {
-				t.Errorf("addRepo() returned %v, want %v", got, tc.wantAdded)
+				t.Errorf("AddRepo() returned %v, want %v", got, tc.wantAdded)
 			}
 			if len(c.Repos) != tc.wantLen {
 				t.Errorf("len(cfg.Repos) = %d, want %d", len(c.Repos), tc.wantLen)
@@ -85,9 +83,9 @@ func TestAddRepo(t *testing.T) {
 	}
 }
 
-// removeRepo -------------------------------------------------------------
+// ---- RemoveRepo ------------------------------------------------------------
 
-func TestRemoveRepo(t *testing.T) {
+func TestConfig_RemoveRepo(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -115,7 +113,7 @@ func TestRemoveRepo(t *testing.T) {
 			wantURLs: []string{"https://a.git"},
 		},
 		{
-			name:     "removing from empty config returns nil",
+			name:     "removing from empty config is a no-op",
 			existing: nil,
 			remove:   "https://a.git",
 			wantURLs: nil,
@@ -125,65 +123,29 @@ func TestRemoveRepo(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			c := cfg(tc.existing...)
+			c := makeCfg(tc.existing...)
 
-			got := removeRepo(c, tc.remove)
+			c.RemoveRepo(tc.remove)
 
 			var gotURLs []string
-			for _, r := range got {
+			for _, r := range c.Repos {
 				gotURLs = append(gotURLs, r.URL)
 			}
 			if !reflect.DeepEqual(gotURLs, tc.wantURLs) {
-				t.Errorf("removeRepo() URLs = %v, want %v", gotURLs, tc.wantURLs)
+				t.Errorf("after RemoveRepo, Repos URLs = %v, want %v", gotURLs, tc.wantURLs)
 			}
 		})
 	}
 }
 
-// listRepos --------------------------------------------------------------
+// ---- ApplyGroupToRepos -----------------------------------------------------
 
-func TestListRepos(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		existing []string
-		want     []string
-	}{
-		{
-			name:     "returns URLs in order",
-			existing: []string{"https://a.git", "https://b.git", "https://c.git"},
-			want:     []string{"https://a.git", "https://b.git", "https://c.git"},
-		},
-		{
-			name:     "empty config returns empty slice",
-			existing: nil,
-			want:     []string{},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			c := cfg(tc.existing...)
-
-			got := listRepos(c)
-
-			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("listRepos() = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
-// applyGroupToRepos ------------------------------------------------------
-
-func TestApplyGroupToRepos(t *testing.T) {
+func TestConfig_ApplyGroupToRepos(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name         string
-		repos        []config.Repo
+		repos        []Repo
 		groupName    string
 		selectedURLs []string
 		wantModified int
@@ -192,7 +154,7 @@ func TestApplyGroupToRepos(t *testing.T) {
 	}{
 		{
 			name: "group is added to selected repos",
-			repos: []config.Repo{
+			repos: []Repo{
 				{URL: "https://a.git"},
 				{URL: "https://b.git"},
 			},
@@ -204,8 +166,8 @@ func TestApplyGroupToRepos(t *testing.T) {
 		},
 		{
 			name: "already-having the group is a no-op",
-			repos: []config.Repo{
-				{URL: "https://a.git", Groups: []config.Group{{Name: "team", Selected: true}}},
+			repos: []Repo{
+				{URL: "https://a.git", Groups: []Group{{Name: "team", Selected: true}}},
 			},
 			groupName:    "team",
 			selectedURLs: []string{"https://a.git"},
@@ -215,7 +177,7 @@ func TestApplyGroupToRepos(t *testing.T) {
 		},
 		{
 			name: "unselected repos are untouched",
-			repos: []config.Repo{
+			repos: []Repo{
 				{URL: "https://a.git"},
 				{URL: "https://b.git"},
 			},
@@ -227,7 +189,7 @@ func TestApplyGroupToRepos(t *testing.T) {
 		},
 		{
 			name: "returns correct count when multiple repos modified",
-			repos: []config.Repo{
+			repos: []Repo{
 				{URL: "https://a.git"},
 				{URL: "https://b.git"},
 				{URL: "https://c.git"},
@@ -241,12 +203,12 @@ func TestApplyGroupToRepos(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			c := &config.Config{Repos: tc.repos}
+			c := &Config{Repos: tc.repos}
 
-			got := applyGroupToRepos(c, tc.groupName, tc.selectedURLs)
+			got := c.ApplyGroupToRepos(tc.groupName, tc.selectedURLs)
 
 			if got != tc.wantModified {
-				t.Errorf("applyGroupToRepos() = %d, want %d", got, tc.wantModified)
+				t.Errorf("ApplyGroupToRepos() = %d, want %d", got, tc.wantModified)
 			}
 			if tc.checkRepo == "" {
 				return
@@ -269,14 +231,14 @@ func TestApplyGroupToRepos(t *testing.T) {
 	}
 }
 
-// removeGroupFromAllRepos ------------------------------------------------
+// ---- RemoveGroupFromAllRepos -----------------------------------------------
 
-func TestRemoveGroupFromAllRepos(t *testing.T) {
+func TestConfig_RemoveGroupFromAllRepos(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name        string
-		repos       []config.Repo
+		repos       []Repo
 		groupName   string
 		wantRemoved int
 		checkRepo   string
@@ -284,9 +246,9 @@ func TestRemoveGroupFromAllRepos(t *testing.T) {
 	}{
 		{
 			name: "group is removed from all repos that have it",
-			repos: []config.Repo{
-				{URL: "https://a.git", Groups: []config.Group{{Name: "team"}, {Name: "other"}}},
-				{URL: "https://b.git", Groups: []config.Group{{Name: "team"}}},
+			repos: []Repo{
+				{URL: "https://a.git", Groups: []Group{{Name: "team"}, {Name: "other"}}},
+				{URL: "https://b.git", Groups: []Group{{Name: "team"}}},
 			},
 			groupName:   "team",
 			wantRemoved: 2,
@@ -295,8 +257,8 @@ func TestRemoveGroupFromAllRepos(t *testing.T) {
 		},
 		{
 			name: "returns 0 when group not found",
-			repos: []config.Repo{
-				{URL: "https://a.git", Groups: []config.Group{{Name: "other"}}},
+			repos: []Repo{
+				{URL: "https://a.git", Groups: []Group{{Name: "other"}}},
 			},
 			groupName:   "missing",
 			wantRemoved: 0,
@@ -305,8 +267,8 @@ func TestRemoveGroupFromAllRepos(t *testing.T) {
 		},
 		{
 			name: "unrelated groups on the same repo survive",
-			repos: []config.Repo{
-				{URL: "https://a.git", Groups: []config.Group{
+			repos: []Repo{
+				{URL: "https://a.git", Groups: []Group{
 					{Name: "keep-me"},
 					{Name: "remove-me"},
 					{Name: "keep-me-too"},
@@ -328,12 +290,12 @@ func TestRemoveGroupFromAllRepos(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			c := &config.Config{Repos: tc.repos}
+			c := &Config{Repos: tc.repos}
 
-			got := removeGroupFromAllRepos(c, tc.groupName)
+			got := c.RemoveGroupFromAllRepos(tc.groupName)
 
 			if got != tc.wantRemoved {
-				t.Errorf("removeGroupFromAllRepos() = %d, want %d", got, tc.wantRemoved)
+				t.Errorf("RemoveGroupFromAllRepos() = %d, want %d", got, tc.wantRemoved)
 			}
 			if tc.checkRepo == "" {
 				return
@@ -356,27 +318,27 @@ func TestRemoveGroupFromAllRepos(t *testing.T) {
 	}
 }
 
-// uniqueGroupNames -------------------------------------------------------
+// ---- UniqueGroupNames ------------------------------------------------------
 
-func TestUniqueGroupNames(t *testing.T) {
+func TestConfig_UniqueGroupNames(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name  string
-		repos []config.Repo
+		repos []Repo
 		want  []string
 	}{
 		{
 			name: "deduplicates and preserves first-seen order",
-			repos: []config.Repo{
-				{URL: "https://a.git", Groups: []config.Group{{Name: "beta"}, {Name: "alpha"}}},
-				{URL: "https://b.git", Groups: []config.Group{{Name: "alpha"}, {Name: "gamma"}}},
+			repos: []Repo{
+				{URL: "https://a.git", Groups: []Group{{Name: "beta"}, {Name: "alpha"}}},
+				{URL: "https://b.git", Groups: []Group{{Name: "alpha"}, {Name: "gamma"}}},
 			},
 			want: []string{"beta", "alpha", "gamma"},
 		},
 		{
 			name: "returns empty (non-nil) slice for config with no groups",
-			repos: []config.Repo{
+			repos: []Repo{
 				{URL: "https://a.git"},
 			},
 			want: []string{},
@@ -388,10 +350,10 @@ func TestUniqueGroupNames(t *testing.T) {
 		},
 		{
 			name: "single group across multiple repos deduplicated to one entry",
-			repos: []config.Repo{
-				{URL: "https://a.git", Groups: []config.Group{{Name: "team"}}},
-				{URL: "https://b.git", Groups: []config.Group{{Name: "team"}}},
-				{URL: "https://c.git", Groups: []config.Group{{Name: "team"}}},
+			repos: []Repo{
+				{URL: "https://a.git", Groups: []Group{{Name: "team"}}},
+				{URL: "https://b.git", Groups: []Group{{Name: "team"}}},
+				{URL: "https://c.git", Groups: []Group{{Name: "team"}}},
 			},
 			want: []string{"team"},
 		},
@@ -400,15 +362,15 @@ func TestUniqueGroupNames(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			c := &config.Config{Repos: tc.repos}
+			c := &Config{Repos: tc.repos}
 
-			got := uniqueGroupNames(c)
+			got := c.UniqueGroupNames()
 
 			if got == nil {
-				t.Fatal("uniqueGroupNames() returned nil, want non-nil slice")
+				t.Fatal("UniqueGroupNames() returned nil, want non-nil slice")
 			}
 			if !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("uniqueGroupNames() = %v, want %v", got, tc.want)
+				t.Errorf("UniqueGroupNames() = %v, want %v", got, tc.want)
 			}
 		})
 	}

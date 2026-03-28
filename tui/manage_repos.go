@@ -10,25 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func addRepo(cfg *config.Config, url string) bool {
-	for _, r := range cfg.Repos {
-		if r.URL == url {
-			return false
-		}
-	}
-	cfg.Repos = append(cfg.Repos, config.Repo{URL: url, Selected: true})
-	return true
-}
-
-func removeRepoFromCfg(cfg *config.Config, url string) []config.Repo {
-	var kept []config.Repo
-	for _, r := range cfg.Repos {
-		if r.URL != url {
-			kept = append(kept, r)
-		}
-	}
-	return kept
-}
 
 type manageRepoScreen int
 
@@ -329,7 +310,7 @@ func (m manageRepoModel) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.prompt.quitting {
 		url := m.prompt.input.Value()
 		if url != "" {
-		addRepo(m.cfg, url)
+		m.cfg.AddRepo(url)
 		logSaveErr(config.Save(m.cfg))
 		}
 		m.screen = mrScreenList
@@ -345,7 +326,7 @@ func (m manageRepoModel) updateRemove(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.remove = newRemove.(removeModel)
 
 	if m.remove.choice != "" {
-		m.cfg.Repos = removeRepoFromCfg(m.cfg, m.remove.choice)
+		m.cfg.RemoveRepo(m.remove.choice)
 		logSaveErr(config.Save(m.cfg))
 		m.screen = mrScreenList
 		m.list = m.buildList()

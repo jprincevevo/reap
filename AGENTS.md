@@ -13,14 +13,15 @@ reap/
 │   ├── root.go          # Root cobra command, main run loop, self-update check
 │   ├── repo.go          # `reap repo {add,remove,list}` subcommands
 │   ├── group.go         # `reap group {add,remove,list}` subcommands
-│   ├── logic.go         # Pure business-logic helpers (no I/O, no cobra) — testable in isolation
-│   ├── logic_test.go    # Table-driven unit tests for every helper in logic.go
+│   ├── config.go        # `reap config {export,import}` subcommands
+│   ├── status.go        # `reap status` subcommand
 │   └── update.go        # `reap update` subcommand (self-update via go-selfupdate)
 ├── config/
-│   └── config.go        # Config struct, Load/Save, path resolution
+│   ├── config.go        # Config struct, Load/Save, path resolution, HasGroups
+│   └── mutations.go     # Methods on *Config: AddRepo, RemoveRepo, ApplyGroupToRepos, etc.
 ├── tui/
 │   ├── app.go           # Root appModel — single program covering all screens
-│   ├── groups.go        # Group-selection list screen (home screen / clone entry point)
+│   ├── groups.go        # Group-selection list screen; shared constants, helpers, and styles
 │   ├── repos.go         # Repo-selection (multi-select) screen
 │   ├── cloning.go       # Parallel cloning progress screen
 │   ├── confirm.go       # Yes/No dialog (used before cloning inside a git repo)
@@ -30,6 +31,7 @@ reap/
 │   ├── manage_repos.go  # Interactive repo management TUI (reap repo)
 │   ├── settings.go      # Settings form screen (depth, dir, pull toggle)
 │   ├── prompt.go        # Text-input prompt sub-model shared by management screens
+│   ├── paste_add.go     # Paste/drop URL confirmation + optional group selection
 │   └── models_test.go   # Headless unit tests for TUI model constructors and Update logic
 ├── version/
 │   └── version.go       # `var Version = "dev"` — injected at build time via ldflags
@@ -76,6 +78,18 @@ repos:
 - `cfg.HasGroups()` returns true if any repo has at least one group
 - `cfg.DefaultDepth` is applied as a fallback for `--depth`; `cfg.DefaultDir` for `--dir`; `cfg.DefaultPull` for `--pull` — all applied only when the flag was not explicitly set by the user
 
+### Config mutation methods (`config/mutations.go`)
+
+Business logic that operates on `*Config` lives here as methods, importable by both `cmd` and `tui` without circular dependencies:
+
+| Method | Behaviour |
+|---|---|
+| `cfg.AddRepo(url) bool` | Appends a new repo (`Selected: true`); no-op and returns `false` if URL already present |
+| `cfg.RemoveRepo(url)` | Removes every repo with the given URL in place |
+| `cfg.ApplyGroupToRepos(name, urls) int` | Adds group to each repo whose URL is in `urls` (skips if already present); returns count modified |
+| `cfg.RemoveGroupFromAllRepos(name) int` | Removes group from every repo that has it; returns total entries removed |
+| `cfg.UniqueGroupNames() []string` | Deduplicated group names in first-seen order; always non-nil |
+
 ---
 
 ## TUI architecture
@@ -84,25 +98,38 @@ Most TUI screens follow the standard Bubble Tea pattern: a model struct with `In
 
 The exception is the main `reap` command, which uses a **single persistent program** (`appModel` in `tui/app.go`) covering all screens for the full process lifetime — see below.
 
-### Shared styles (defined in `tui/groups.go`)
+### Shared constants, helpers, and styles (defined in `tui/groups.go`)
 
 ```go
-itemStyle         = lipgloss.NewStyle().PaddingLeft(4)
-selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170"))
-titleStyle        = lipgloss.NewStyle().MarginLeft(2)
-paginationStyle   = list.DefaultStyles(false).PaginationStyle.PaddingLeft(4)
-helpStyle         = list.DefaultStyles(false).HelpStyle.PaddingLeft(4).PaddingBottom(1)
-quitTextStyle     = lipgloss.NewStyle().Margin(1, 0, 2, 4)
-listHeight        = 14   // shared fixed height for all list screens
+// Constants
+listHeight       = 14   // shared fixed height for all list screens
+listDefaultWidth = 20   // initial width before WindowSizeMsg arrives
+showAllRepos     = "Show all repos"  // sentinel group name meaning "no filter"
+
+// Color palette (light/dark adaptive)
+colorAccent  // amber
+colorSuccess // teal
+colorError   // red
+colorDim     // gray
+colorMuted   // peach/dark amber
+colorPurple  // purple (confirm dialog border)
+
+// Styles (package-level vars used by every file in package tui)
+titleStyle, itemStyle, selectedItemStyle, cursorStyle
+paginationStyle, helpStyle, quitTextStyle
+dimHelpStyles   // help.Styles override for all list help bars
 ```
 
-These are package-level vars used by every file in `package tui`.
+**`newList(items, delegate, title)`** — shared constructor that applies all standard styles and settings to a `list.Model`. Every `build*List()` method and list constructor calls this instead of duplicating the 7-line setup block.
+
+**`logSaveErr(err)`** — prints `"Error saving config: <err>"` to stdout when err is non-nil. Used at every `config.Save` call site in the TUI (can't return errors from Update).
 
 ### List screens pattern
 
 Each list-based screen (groups, repos, remove, groups_add, management screens) has:
 - A custom `ItemDelegate` that renders items using `itemStyle` / `selectedItemStyle`
 - A `WindowSizeMsg` handler that calls `m.list.SetSize(msg.Width, listHeight)` — **use `SetSize`, not `SetWidth`**, to ensure the paginator's `PerPage` is recalculated correctly at the new terminal width
+- A call to `newList(items, delegate, title)` in the constructor — do not inline the style setup
 
 ### Critical TUI rendering rule (v2)
 
@@ -133,6 +160,7 @@ const (
     appScreenGroups                    // manageGroupModel
     appScreenRepos                     // manageRepoModel
     appScreenSettings                  // settingsModel
+    appScreenPasteAdd                  // paste/drop URL confirmation + group selection
 )
 ```
 
@@ -141,11 +169,14 @@ The home screen is the group-selection list (`groupModel`). From there:
 - `g` → manage groups (returns on `q`/`esc`)
 - `r` → manage repos (returns on `q`/`esc`)
 - `s` → settings (returns on `esc` or after last field)
+- paste/drop a GitHub URL on any screen → `pasteAddModel` confirmation flow
 - `q`/`esc` → exits program
 
 The `Update` method intercepts `g`, `r`, `s` **before** forwarding to `groupModel`, but only when the list is not in filter mode (`list.FilterState() != list.Filtering`). Sub-models signal the parent via `goBack bool` rather than propagating `tea.Quit`; the parent discards the `tea.Quit` and transitions screens.
 
-`cmd/root.go` calls `tui.InitialAppModel(cfg)` for the main command, which returns the selected repo URLs when the user confirms a clone.
+**`appModel.goHome()`** is a helper method that rebuilds the home `groupModel` from the current config and transitions `screen` to `appScreenHome`. It is called in every "return to home" branch — do not inline the 5-line block again.
+
+`cmd/root.go` calls `tui.InitialAppModel(cfg)` for the main command, which returns the selected repo URLs when the user confirms a clone. The collection loop uses **`fm.repo.list.VisibleItems()`** (not `Items()`) so that an active filter restricts which repos are cloned.
 
 ### Onboarding screens
 
@@ -166,6 +197,14 @@ Three onboarding views replace empty lists when there is nothing to show:
 | Regular letters/symbols | the character itself, e.g. `"q"`, `"/"` |
 
 Always use the named form in switch cases. Using `" "` for space means the handler silently never fires.
+
+### Filter-aware repo selection
+
+When the user applies a filter on the repo-selection screen and presses Enter, **only visible repos are candidates for cloning** — hidden repos are excluded regardless of their selected state. This is enforced in both `InitialRepoModel` and `InitialAppModel` by iterating `m.list.VisibleItems()` instead of `m.list.Items()`.
+
+The Enter help label also changes contextually: `"confirm"` when unfiltered, `"clone visible"` when `FilterState() == FilterApplied`. This is set dynamically in `repoModel.View()` (value receiver, so it only affects the local render copy) via `m.list.AdditionalShortHelpKeys`.
+
+Pressing `esc` while a filter is active clears the filter (restoring all items) rather than going back to the previous screen.
 
 ### `ErrGoBack` sentinel
 
@@ -268,24 +307,19 @@ Pushing to `main` triggers two chained workflows:
 
 ### Architecture
 
-Business logic in `cmd/repo.go` and `cmd/group.go` is extracted into **pure helper functions** in `cmd/logic.go`. Each helper:
+Config mutation logic lives in `config/mutations.go` as methods on `*Config` (no I/O, no cobra dependency) and is covered by `config/mutations_test.go`. The cobra `Run` closures in `cmd/` are thin orchestrators (load → call `cfg.Method()` → save → print) and have no dedicated tests; their correctness is implicitly covered by the config package tests.
 
-- Takes a `*config.Config` and plain value arguments
-- Returns a plain result (bool, slice, or int)
-- Performs **no I/O** — no `config.Load`/`config.Save`, no `fmt.Print`, no cobra dependency
+### Config mutation tests (`config/mutations_test.go`)
 
-The cobra `Run` closures are thin orchestrators: load config → call helper → save → print. This split makes the logic trivially unit-testable without a real filesystem or command invocation.
+Table-driven, fully-parallelised subtests (`t.Parallel()` at both levels) covering every method:
 
-### Helpers (`cmd/logic.go`)
-
-| Function | Behaviour |
+| Test | Covers |
 |---|---|
-| `addRepo(cfg, url) bool` | Appends a new repo (`Selected: true`); returns `false` if URL already present |
-| `removeRepo(cfg, url) []Repo` | Returns a new slice with the given URL removed |
-| `listRepos(cfg) []string` | Returns all repo URLs in order |
-| `applyGroupToRepos(cfg, name, urls) int` | Adds a group to each selected repo (skips if already present); returns count modified |
-| `removeGroupFromAllRepos(cfg, name) int` | Removes a group from every repo; returns total entries removed |
-| `uniqueGroupNames(cfg) []string` | Deduplicates group names across all repos, first-seen order; always non-nil |
+| `TestConfig_AddRepo` | append, duplicate skip, empty config |
+| `TestConfig_RemoveRepo` | removal, no-op on unknown URL, empty config |
+| `TestConfig_ApplyGroupToRepos` | add group, skip if already present, unselected repos untouched, count |
+| `TestConfig_RemoveGroupFromAllRepos` | removal across repos, count, no-op, unrelated groups survive |
+| `TestConfig_UniqueGroupNames` | dedup, first-seen order, empty/no-group configs return non-nil slice |
 
 ### Running tests
 
@@ -295,19 +329,19 @@ make test-v      # go test ./... -v  (verbose, shows each subtest)
 make check       # gofmt + go vet + go test ./...  (full pre-push gate)
 ```
 
-`cmd/logic_test.go` contains 21 table-driven, fully-parallelised subtests (`t.Parallel()` at both the top level and inside each `t.Run`). All helpers are covered.
-
 ### TUI model tests (`tui/models_test.go`)
 
 TUI model logic is tested headlessly by calling `Update` with hand-crafted `tea.KeyPressMsg` / `tea.WindowSizeMsg` values and asserting on the returned model state — no terminal or `tea.Program` required. Covered areas:
 
 - `repoItem` — `Description()` and `FilterValue()`
-- `NewRepoModel` — Show All inclusion, group filtering, per-group `Selected` state, unknown group
-- `NewGroupModel` — "Show All" always first, group deduplication, empty config
+- `NewRepoModel` — `showAllRepos` inclusion, group filtering, per-group `Selected` state, unknown group
+- `NewGroupModel` — `showAllRepos` always first, group deduplication, empty config
 - `repoModel.Update` — quit keys, esc (goBack), enter, space toggle
+- `repoModel` filter scope — `SetFilterText` puts model into `FilterApplied`; `VisibleItems()` returns only matching repos while `Items()` retains all
 - `groupModel.Update` — quit keys, enter sets choice
 - `confirmModel.Update` — default button, left/right, enter on Yes/No, quit keys
 - `appModel.Update` — WindowSizeMsg stores width, g/r/s key transitions, enter on group list → repo screen, goBack from management → home screen
+- `appModel` filter scope — same `VisibleItems()` contract verified through the appModel path
 - `promptModel` constructor — `Focused()` returns true, `ready` is true
 - `manageGroupModel` — list screen key routing (enter/a/r/d/q), q sets goBack (not done), detail screen key routing (esc/q/r), `buildDetailList` content and title
 - `manageRepoModel` — list screen key routing (enter/a/q), q sets goBack (not done), detail screen key routing (esc/a/r), add-to-group esc, `buildDetailList` content, `buildGroupList` exclusion logic
@@ -316,8 +350,8 @@ TUI model logic is tested headlessly by calling `Update` with hand-crafted `tea.
 ### What is not tested
 
 - The cloning screen (`tui/cloning.go`) is I/O-bound and requires a live terminal
-- The cobra `Run` closures in `cmd/repo.go` and `cmd/group.go` are thin orchestrators (load → call helper → save → print); their correctness is implicitly covered by the logic helper tests
-- `settingsModel` config persistence (`config.Save` calls) — these require a real filesystem and are covered by integration testing
+- The cobra `Run` closures in `cmd/` — thin orchestrators covered implicitly by config package tests
+- `settingsModel` config persistence (`config.Save` calls) — requires a real filesystem
 
 ---
 

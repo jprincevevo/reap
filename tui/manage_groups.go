@@ -10,50 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func removeGroupFromAllRepos(cfg *config.Config, groupName string) int {
-	removed := 0
-	for i, repo := range cfg.Repos {
-		var kept []config.Group
-		for _, g := range repo.Groups {
-			if g.Name != groupName {
-				kept = append(kept, g)
-			} else {
-				removed++
-			}
-		}
-		cfg.Repos[i].Groups = kept
-	}
-	return removed
-}
-
-func applyGroupToRepos(cfg *config.Config, groupName string, selectedURLs []string) int {
-	selected := make(map[string]bool, len(selectedURLs))
-	for _, u := range selectedURLs {
-		selected[u] = true
-	}
-
-	modified := 0
-	for i, repo := range cfg.Repos {
-		if !selected[repo.URL] {
-			continue
-		}
-		alreadyHas := false
-		for _, g := range repo.Groups {
-			if g.Name == groupName {
-				alreadyHas = true
-				break
-			}
-		}
-		if !alreadyHas {
-			cfg.Repos[i].Groups = append(cfg.Repos[i].Groups, config.Group{
-				Name:     groupName,
-				Selected: true,
-			})
-			modified++
-		}
-	}
-	return modified
-}
 
 type manageGroupScreen int
 
@@ -414,7 +370,7 @@ func (m manageGroupModel) updateAddRepos(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if len(selectedURLs) > 0 {
-			applyGroupToRepos(m.cfg, m.pendingGroup, selectedURLs)
+			m.cfg.ApplyGroupToRepos(m.pendingGroup, selectedURLs)
 			logSaveErr(config.Save(m.cfg))
 		}
 		m.screen = mgScreenList
@@ -455,7 +411,7 @@ func (m manageGroupModel) updateConfirmDelete(msg tea.Msg) (tea.Model, tea.Cmd) 
 
 	if m.prompt.quitting {
 		if m.prompt.input.Value() == "yes" {
-			removeGroupFromAllRepos(m.cfg, m.selectedGroup)
+			m.cfg.RemoveGroupFromAllRepos(m.selectedGroup)
 			logSaveErr(config.Save(m.cfg))
 		}
 		m.screen = mgScreenList

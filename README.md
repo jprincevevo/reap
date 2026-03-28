@@ -43,27 +43,34 @@ go install [github.com/jprincevevo/reap@latest](https://github.com/jprincevevo/r
 ### Example `config.yaml`
 
 ```yaml
+default_depth: 1          # optional; git clone --depth fallback (0 = full clone)
+default_dir: ~/projects   # optional; clone destination fallback
+default_pull: false       # optional; pull instead of clone when the repo already exists
 repos:
   - url: https://github.com/charmbracelet/bubbletea.git
     groups:
-      - charm
+      - name: charm
+        selected: true
   - url: https://github.com/charmbracelet/lipgloss.git
     groups:
-      - charm
+      - name: charm
+        selected: true
   - url: https://github.com/spf13/cobra.git
 ```
 
 ## Commands Reference
 
-| Command                  | Description                                                                 |
-| ------------------------ | --------------------------------------------------------------------------- |
-| `reap`                   | Launch the interactive TUI to select repositories or groups for cloning.    |
-| `reap repo add <url>`    | Add a new repository to the configuration.                                  |
-| `reap repo remove`       | Launch a TUI to select and remove repositories from the configuration.      |
-| `reap group list`        | List all custom groups.                                                     |
-| `reap group add <name>`  | Create a new group and select repositories to add to it.                    |
-| `reap group remove`      | Launch a TUI to select and remove a group.                                  |
-| `reap update`            | Update `reap` to the latest version.                                        |
+| Command                    | Description                                                                 |
+| -------------------------- | --------------------------------------------------------------------------- |
+| `reap`                     | Launch the interactive TUI to select repositories or groups for cloning.    |
+| `reap repo add <url>`      | Add a new repository to the configuration.                                  |
+| `reap repo remove`         | Launch a TUI to select and remove repositories from the configuration.      |
+| `reap repo list`           | Print all configured repository URLs.                                       |
+| `reap group add <name>`    | Create a new group and select repositories to add to it.                    |
+| `reap group remove <name>` | Remove a group from all repositories.                                       |
+| `reap group list`          | List all custom groups.                                                     |
+| `reap status`              | Show clone status of all configured repositories.                           |
+| `reap update`              | Update `reap` to the latest version.                                        |
 
 ## Development
 
@@ -79,21 +86,25 @@ repos:
 2.  Run the application:
 
     ```bash
-    go run main.go
+    go run .
     ```
 
-### Building a Local Binary
+### Common Makefile Targets
 
 ```bash
-go build -o reap
+make test        # run all tests (go test ./...)
+make test-v      # verbose test output
+make check       # gofmt + go vet + tests — run before pushing
+make build       # produce ./reap_test binary
+make clean       # remove ./reap_test
+make fmt         # gofmt -w .
+make tidy        # go mod tidy
 ```
 
 ### Testing Versioning
 
-To test the version injection, use the following `ldflags`:
-
 ```bash
-go build -ldflags="-X github.com/jprincevevo/reap/version.Version=v1.0.0" -o reap
+go build -ldflags="-X github.com/jprincevevo/reap/version.Version=v1.0.0" -o reap_test .
 ```
 
 ## Safety
