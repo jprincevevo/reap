@@ -13,6 +13,8 @@ reap/
 │   ├── root.go          # Root cobra command, main run loop, self-update check
 │   ├── repo.go          # `reap repo {add,remove,list}` subcommands
 │   ├── group.go         # `reap group {add,remove,list}` subcommands
+│   ├── logic.go         # Pure business-logic helpers (no I/O, no cobra) — testable in isolation
+│   ├── logic_test.go    # Table-driven unit tests for every helper in logic.go
 │   └── update.go        # `reap update` subcommand (self-update via go-selfupdate)
 ├── config/
 │   └── config.go        # Config struct, Load/Save, path resolution
@@ -184,6 +186,45 @@ Pushing to `main` triggers two chained workflows:
 
 ---
 
+## Testing
+
+### Architecture
+
+Business logic in `cmd/repo.go` and `cmd/group.go` is extracted into **pure helper functions** in `cmd/logic.go`. Each helper:
+
+- Takes a `*config.Config` and plain value arguments
+- Returns a plain result (bool, slice, or int)
+- Performs **no I/O** — no `config.Load`/`config.Save`, no `fmt.Print`, no cobra dependency
+
+The cobra `Run` closures are thin orchestrators: load config → call helper → save → print. This split makes the logic trivially unit-testable without a real filesystem or command invocation.
+
+### Helpers (`cmd/logic.go`)
+
+| Function | Behaviour |
+|---|---|
+| `addRepo(cfg, url) bool` | Appends a new repo (`Selected: true`); returns `false` if URL already present |
+| `removeRepo(cfg, url) []Repo` | Returns a new slice with the given URL removed |
+| `listRepos(cfg) []string` | Returns all repo URLs in order |
+| `applyGroupToRepos(cfg, name, urls) int` | Adds a group to each selected repo (skips if already present); returns count modified |
+| `removeGroupFromAllRepos(cfg, name) int` | Removes a group from every repo; returns total entries removed |
+| `uniqueGroupNames(cfg) []string` | Deduplicates group names across all repos, first-seen order; always non-nil |
+
+### Running tests
+
+```bash
+make test        # go test ./...
+make test-v      # go test ./... -v  (verbose, shows each subtest)
+make check       # gofmt + go vet + go test ./...  (full pre-push gate)
+```
+
+`cmd/logic_test.go` contains 21 table-driven, fully-parallelised subtests (`t.Parallel()` at both the top level and inside each `t.Run`). All helpers are covered.
+
+### What is not tested
+
+TUI models (`tui/`) depend on Bubble Tea's event loop and terminal state, making them unsuitable for headless unit tests. Test them manually via `go run .` or a VHS tape (`demo.tape`). The cloning screen (`tui/cloning.go`) is similarly I/O-bound. The cobra `Run` closures in `cmd/repo.go` and `cmd/group.go` are thin enough (load → call helper → save → print) that their correctness is implicitly covered by the helper tests.
+
+---
+
 ## Building and testing locally
 
 ```bash
@@ -205,6 +246,19 @@ Useful flag combinations:
 ```bash
 go run . --version            # print version ("dev" for local builds)
 go run . --depth 1            # shallow clone (depth 1)
+```
+
+Makefile targets (prefer these over raw `go` commands):
+
+```bash
+make test        # run all tests
+make test-v      # run all tests, verbose
+make check       # fmt + vet + test (run before pushing)
+make lint        # go vet only
+make fmt         # gofmt -w .
+make tidy        # go mod tidy
+make build       # produce ./reap_test binary
+make clean       # remove ./reap_test
 ```
 
 To exercise the group-selection TUI you need repos with groups in the config. The quickest way to set that up:
