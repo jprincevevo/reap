@@ -63,12 +63,15 @@ const (
 	mgScreenAddRepos
 	mgScreenRename
 	mgScreenConfirmDelete
+	mgScreenDetail
+	mgScreenConfirmRemoveRepo
 )
 
 type manageGroupModel struct {
 	cfg           *config.Config
 	screen        manageGroupScreen
 	list          list.Model
+	detailList    list.Model
 	prompt        promptModel
 	groupAdd      groupAddModel
 	width         int
@@ -76,6 +79,7 @@ type manageGroupModel struct {
 	done          bool
 	pendingGroup  string
 	selectedGroup string
+	selectedRepo  string
 }
 
 func (m manageGroupModel) Init() tea.Cmd {
@@ -118,6 +122,39 @@ func (m manageGroupModel) buildList() list.Model {
 	return l
 }
 
+func (m manageGroupModel) buildDetailList() list.Model {
+	var items []list.Item
+	for _, repo := range m.cfg.Repos {
+		for _, g := range repo.Groups {
+			if g.Name == m.selectedGroup {
+				items = append(items, item(repo.URL))
+				break
+			}
+		}
+	}
+
+	const defaultWidth = 20
+	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
+	l.Title = "Group: " + m.selectedGroup
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(true)
+	l.Styles.Title = titleStyle
+	l.Styles.PaginationStyle = paginationStyle
+	l.Styles.HelpStyle = helpStyle
+	l.AdditionalShortHelpKeys = func() []key.Binding {
+		return []key.Binding{
+			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "remove repo")),
+			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		}
+	}
+
+	if m.width > 0 {
+		l.SetSize(m.width, listHeight)
+	}
+
+	return l
+}
+
 func (m manageGroupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if wsm, ok := msg.(tea.WindowSizeMsg); ok {
 		m.width = wsm.Width
@@ -134,6 +171,10 @@ func (m manageGroupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateRename(msg)
 	case mgScreenConfirmDelete:
 		return m.updateConfirmDelete(msg)
+	case mgScreenDetail:
+		return m.updateDetail(msg)
+	case mgScreenConfirmRemoveRepo:
+		return m.updateConfirmRemoveRepo(msg)
 	}
 
 	return m, nil
@@ -152,9 +193,19 @@ func (m manageGroupModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c", "q", "enter":
+		case "ctrl+c", "q":
 			m.done = true
 			return m, tea.Quit
+
+		case "enter":
+			sel, ok := m.list.SelectedItem().(item)
+			if !ok {
+				return m, nil
+			}
+			m.selectedGroup = string(sel)
+			m.screen = mgScreenDetail
+			m.detailList = m.buildDetailList()
+			return m, nil
 
 		case "a":
 			m.screen = mgScreenAdd
@@ -191,6 +242,48 @@ func (m manageGroupModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
+	return m, cmd
+}
+
+func (m manageGroupModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.detailList.SetSize(msg.Width, listHeight)
+		return m, nil
+
+	case tea.KeyPressMsg:
+		if m.detailList.FilterState() == list.Filtering {
+			break
+		}
+
+		switch msg.String() {
+		case "ctrl+c":
+			m.done = true
+			return m, tea.Quit
+
+		case "q", "esc":
+			m.screen = mgScreenList
+			m.list = m.buildList()
+			return m, nil
+
+		case "r":
+			sel, ok := m.detailList.SelectedItem().(item)
+			if !ok {
+				return m, nil
+			}
+			m.selectedRepo = string(sel)
+			m.screen = mgScreenConfirmRemoveRepo
+			m.prompt = NewPromptModel(
+				fmt.Sprintf("Remove %q from group %q? Type 'yes' to confirm", m.selectedRepo, m.selectedGroup),
+				"yes",
+			)
+			cmd := m.prompt.Init()
+			return m, cmd
+		}
+	}
+
+	var cmd tea.Cmd
+	m.detailList, cmd = m.detailList.Update(msg)
 	return m, cmd
 }
 
@@ -299,12 +392,51 @@ func (m manageGroupModel) updateConfirmDelete(msg tea.Msg) (tea.Model, tea.Cmd) 
 	return m, cmd
 }
 
+func (m manageGroupModel) updateConfirmRemoveRepo(msg tea.Msg) (tea.Model, tea.Cmd) {
+	newPrompt, cmd := m.prompt.Update(msg)
+	m.prompt = newPrompt.(promptModel)
+
+	if m.prompt.quitting {
+		if m.prompt.input.Value() == "yes" {
+			for i, repo := range m.cfg.Repos {
+				if repo.URL == m.selectedRepo {
+					var kept []config.Group
+					for _, g := range repo.Groups {
+						if g.Name != m.selectedGroup {
+							kept = append(kept, g)
+						}
+					}
+					m.cfg.Repos[i].Groups = kept
+					break
+				}
+			}
+			if err := config.Save(m.cfg); err != nil {
+				fmt.Println("Error saving config:", err)
+			}
+		}
+		m.screen = mgScreenDetail
+		m.detailList = m.buildDetailList()
+		return m, nil
+	}
+
+	return m, cmd
+}
+
 func (m manageGroupModel) View() tea.View {
 	switch m.screen {
-	case mgScreenAdd, mgScreenRename, mgScreenConfirmDelete:
+	case mgScreenAdd, mgScreenRename, mgScreenConfirmDelete, mgScreenConfirmRemoveRepo:
 		return m.prompt.View()
 	case mgScreenAddRepos:
 		return m.groupAdd.View()
+	case mgScreenDetail:
+		if !m.ready {
+			v := tea.NewView("")
+			v.AltScreen = true
+			return v
+		}
+		v := tea.NewView("\n" + m.detailList.View())
+		v.AltScreen = true
+		return v
 	}
 
 	if !m.ready {

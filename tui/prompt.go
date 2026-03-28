@@ -59,7 +59,8 @@ func NewPromptModel(title, placeholder string) promptModel {
 	ti.Placeholder = placeholder
 	ti.Prompt = "  > "
 	ti.SetWidth(60)
-	return promptModel{input: ti, title: title}
+	ti.Focus()
+	return promptModel{input: ti, title: title, ready: true}
 }
 
 func NewPromptModelWithValue(title, placeholder, value string) promptModel {

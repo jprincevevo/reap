@@ -25,7 +25,11 @@ reap/
 │   ├── cloning.go       # Parallel cloning progress screen
 │   ├── confirm.go       # Yes/No dialog (used before cloning inside a git repo)
 │   ├── remove.go        # Repo-removal selection screen
-│   └── groups_add.go    # Repo multi-select screen used when creating a group
+│   ├── groups_add.go    # Repo multi-select screen used when creating a group
+│   ├── manage_groups.go # Interactive group management TUI (reap group)
+│   ├── manage_repos.go  # Interactive repo management TUI (reap repo)
+│   ├── prompt.go        # Text-input prompt sub-model shared by management screens
+│   └── models_test.go   # Headless unit tests for TUI model constructors and Update logic
 ├── version/
 │   └── version.go       # `var Version = "dev"` — injected at build time via ldflags
 ├── .workspace/          # Ephemeral agent workspace — see below
@@ -93,7 +97,7 @@ These are package-level vars used by every file in `package tui`.
 
 ### List screens pattern
 
-Each list-based screen (groups, repos, remove, groups_add) has:
+Each list-based screen (groups, repos, remove, groups_add, management screens) has:
 - A custom `ItemDelegate` that renders items using `itemStyle` / `selectedItemStyle`
 - A `WindowSizeMsg` handler that calls `m.list.SetSize(msg.Width, listHeight)` — **use `SetSize`, not `SetWidth`**, to ensure the paginator's `PerPage` is recalculated correctly at the new terminal width
 
@@ -137,6 +141,44 @@ Always use the named form in switch cases. Using `" "` for space means the handl
 ### `ErrGoBack` sentinel
 
 `tui.ErrGoBack` is a package-level `errors.New` value exported from `repos.go`. `InitialRepoModel` returns it when the user presses `esc` in standalone mode (no-groups path). `flowModel` handles go-back internally and never surfaces `ErrGoBack` to callers.
+
+### Management screens (`tui/manage_groups.go`, `tui/manage_repos.go`)
+
+`reap group` and `reap repo` (with no subcommand) launch interactive management TUIs backed by `manageGroupModel` and `manageRepoModel` respectively. Both follow a multi-screen parent pattern (similar to `flowModel`) where all screens live inside a single `tea.Program`:
+
+**`reap group` key map:**
+
+| Key | Screen | Action |
+|-----|--------|--------|
+| `enter` | Group list | Open group detail (repos in that group) |
+| `a` | Group list | Prompt for new name → repo multi-select → save |
+| `r` | Group list | Prompt to rename selected group → save |
+| `d` | Group list | Type-yes confirmation → delete group from all repos |
+| `r` | Group detail | Type-yes confirmation → remove highlighted repo from group |
+| `esc` / `q` | Group detail | Back to group list |
+| `q` / `ctrl+c` | Any | Exit |
+
+**`reap repo` key map:**
+
+| Key | Screen | Action |
+|-----|--------|--------|
+| `enter` | Repo list | Open repo detail (groups the repo belongs to) |
+| `a` | Repo list | Prompt for new URL → save |
+| `d` | Repo list | Repo-removal selection screen → save |
+| `a` | Repo detail | List of groups the repo is NOT yet in → `enter` adds |
+| `r` | Repo detail | Type-yes confirmation → remove from highlighted group |
+| `esc` / `q` | Repo detail / add-to-group | Back to previous screen |
+| `q` / `ctrl+c` | Any | Exit |
+
+### `promptModel` — embedded text-input (`tui/prompt.go`)
+
+`promptModel` wraps `textinput.Model` and is used as a sub-model by the management screens. Two critical properties:
+
+1. **Focus must be set in the constructor, not in `Init()`.** `textinput.Model.Focus()` has a pointer receiver. When called inside `Init()` (value receiver), Go operates on a copy — the focus state is set on a throwaway copy and the real model stays unfocused. `textinput.Update` silently drops all input when `!m.focus`. Fix: call `ti.Focus()` directly on the local variable inside `NewPromptModel` before copying it into the struct.
+
+2. **`ready` is initialised to `true` in the constructor.** When the prompt is embedded in a running program (transitions between screens), no new `WindowSizeMsg` arrives, so the `ready` guard would keep the prompt blank forever. Starting `ready: true` makes it render immediately.
+
+When a prompt sub-model quits (user pressed `enter` or `esc`), the parent's `update*` method checks `m.prompt.quitting` and **discards the `tea.Quit` cmd** returned by the prompt, returning `nil` instead. This keeps the parent program alive for the screen transition.
 
 ### Cloning screen (`tui/cloning.go`)
 
@@ -219,9 +261,25 @@ make check       # gofmt + go vet + go test ./...  (full pre-push gate)
 
 `cmd/logic_test.go` contains 21 table-driven, fully-parallelised subtests (`t.Parallel()` at both the top level and inside each `t.Run`). All helpers are covered.
 
+### TUI model tests (`tui/models_test.go`)
+
+TUI model logic is tested headlessly by calling `Update` with hand-crafted `tea.KeyPressMsg` / `tea.WindowSizeMsg` values and asserting on the returned model state — no terminal or `tea.Program` required. Covered areas:
+
+- `repoItem` — `Description()` and `FilterValue()`
+- `NewRepoModel` — Show All inclusion, group filtering, per-group `Selected` state, unknown group
+- `NewGroupModel` — "Show All" always first, group deduplication, empty config
+- `repoModel.Update` — quit keys, esc (goBack), enter, space toggle
+- `groupModel.Update` — quit keys, enter sets choice
+- `confirmModel.Update` — default button, left/right, enter on Yes/No, quit keys
+- `flowModel.Update` — WindowSizeMsg, group enter → repo screen, repo esc → group screen
+- `promptModel` constructor — `Focused()` returns true, `ready` is true
+- `manageGroupModel` — list screen key routing (enter/a/r/d/q), detail screen key routing (esc/q/r), `buildDetailList` content and title
+- `manageRepoModel` — list screen key routing (enter/a/q), detail screen key routing (esc/a/r), add-to-group esc, `buildDetailList` content, `buildGroupList` exclusion logic
+
 ### What is not tested
 
-TUI models (`tui/`) depend on Bubble Tea's event loop and terminal state, making them unsuitable for headless unit tests. Test them manually via `go run .` or a VHS tape (`demo.tape`). The cloning screen (`tui/cloning.go`) is similarly I/O-bound. The cobra `Run` closures in `cmd/repo.go` and `cmd/group.go` are thin enough (load → call helper → save → print) that their correctness is implicitly covered by the helper tests.
+- The cloning screen (`tui/cloning.go`) is I/O-bound and requires a live terminal
+- The cobra `Run` closures in `cmd/repo.go` and `cmd/group.go` are thin orchestrators (load → call helper → save → print); their correctness is implicitly covered by the logic helper tests
 
 ---
 

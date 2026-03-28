@@ -378,3 +378,299 @@ func TestFlowModel_RepoEsc_TransitionsBackToGroupScreen(t *testing.T) {
 		t.Errorf("screen = %v, want flowScreenGroup", result.screen)
 	}
 }
+
+// ==============================
+// promptModel constructor
+// ==============================
+
+func TestPromptModel_Constructor_IsFocused(t *testing.T) {
+	m := NewPromptModel("title", "placeholder")
+	if !m.input.Focused() {
+		t.Error("NewPromptModel: input.Focused() = false, want true")
+	}
+}
+
+func TestPromptModel_Constructor_IsReady(t *testing.T) {
+	m := NewPromptModel("title", "placeholder")
+	if !m.ready {
+		t.Error("NewPromptModel: ready = false, want true")
+	}
+}
+
+// ==============================
+// manageGroupModel — list screen
+// ==============================
+
+func newManageGroupModel(cfg *config.Config) manageGroupModel {
+	m := manageGroupModel{cfg: cfg}
+	m.list = m.buildList()
+	return m
+}
+
+func TestManageGroupModel_List_QuitKeys(t *testing.T) {
+	for _, msg := range []tea.Msg{pressChar('q'), pressCtrl('c')} {
+		m := newManageGroupModel(sampleCfg())
+		updated, _ := m.Update(msg)
+		result := updated.(manageGroupModel)
+		if !result.done {
+			t.Errorf("%T: done = false, want true", msg)
+		}
+	}
+}
+
+func TestManageGroupModel_List_EnterTransitionsToDetail(t *testing.T) {
+	m := newManageGroupModel(sampleCfg())
+
+	updated, _ := m.Update(pressKey(tea.KeyEnter))
+	result := updated.(manageGroupModel)
+	if result.screen != mgScreenDetail {
+		t.Errorf("screen = %v, want mgScreenDetail", result.screen)
+	}
+	if result.selectedGroup == "" {
+		t.Error("selectedGroup is empty after enter")
+	}
+}
+
+func TestManageGroupModel_List_ATransitionsToAdd(t *testing.T) {
+	m := newManageGroupModel(sampleCfg())
+
+	updated, _ := m.Update(pressChar('a'))
+	result := updated.(manageGroupModel)
+	if result.screen != mgScreenAdd {
+		t.Errorf("screen = %v, want mgScreenAdd", result.screen)
+	}
+}
+
+func TestManageGroupModel_List_RTransitionsToRename(t *testing.T) {
+	m := newManageGroupModel(sampleCfg())
+
+	updated, _ := m.Update(pressChar('r'))
+	result := updated.(manageGroupModel)
+	if result.screen != mgScreenRename {
+		t.Errorf("screen = %v, want mgScreenRename", result.screen)
+	}
+	if result.selectedGroup == "" {
+		t.Error("selectedGroup is empty after r")
+	}
+}
+
+func TestManageGroupModel_List_DTransitionsToConfirmDelete(t *testing.T) {
+	m := newManageGroupModel(sampleCfg())
+
+	updated, _ := m.Update(pressChar('d'))
+	result := updated.(manageGroupModel)
+	if result.screen != mgScreenConfirmDelete {
+		t.Errorf("screen = %v, want mgScreenConfirmDelete", result.screen)
+	}
+	if result.selectedGroup == "" {
+		t.Error("selectedGroup is empty after d")
+	}
+}
+
+// ==============================
+// manageGroupModel — detail screen
+// ==============================
+
+func newManageGroupDetailModel(cfg *config.Config, group string) manageGroupModel {
+	m := manageGroupModel{cfg: cfg, screen: mgScreenDetail, selectedGroup: group}
+	m.list = m.buildList()
+	m.detailList = m.buildDetailList()
+	return m
+}
+
+func TestManageGroupModel_Detail_EscTransitionsBackToList(t *testing.T) {
+	m := newManageGroupDetailModel(sampleCfg(), "work")
+
+	updated, _ := m.Update(pressKey(tea.KeyEscape))
+	result := updated.(manageGroupModel)
+	if result.screen != mgScreenList {
+		t.Errorf("screen = %v, want mgScreenList", result.screen)
+	}
+}
+
+func TestManageGroupModel_Detail_QTransitionsBackToList(t *testing.T) {
+	m := newManageGroupDetailModel(sampleCfg(), "work")
+
+	updated, _ := m.Update(pressChar('q'))
+	result := updated.(manageGroupModel)
+	if result.screen != mgScreenList {
+		t.Errorf("screen = %v, want mgScreenList", result.screen)
+	}
+}
+
+func TestManageGroupModel_Detail_RTransitionsToConfirmRemoveRepo(t *testing.T) {
+	m := newManageGroupDetailModel(sampleCfg(), "work")
+
+	updated, _ := m.Update(pressChar('r'))
+	result := updated.(manageGroupModel)
+	if result.screen != mgScreenConfirmRemoveRepo {
+		t.Errorf("screen = %v, want mgScreenConfirmRemoveRepo", result.screen)
+	}
+	if result.selectedRepo == "" {
+		t.Error("selectedRepo is empty after r in detail")
+	}
+}
+
+// ==============================
+// manageGroupModel — buildDetailList
+// ==============================
+
+func TestManageGroupModel_BuildDetailList_ReturnsReposInGroup(t *testing.T) {
+	// sampleCfg: "work" group contains beta.git and gamma.git
+	m := manageGroupModel{cfg: sampleCfg(), selectedGroup: "work"}
+	dl := m.buildDetailList()
+	if len(dl.Items()) != 2 {
+		t.Fatalf("detail list has %d items, want 2", len(dl.Items()))
+	}
+}
+
+func TestManageGroupModel_BuildDetailList_TitleIncludesGroupName(t *testing.T) {
+	m := manageGroupModel{cfg: sampleCfg(), selectedGroup: "work"}
+	dl := m.buildDetailList()
+	if dl.Title != "Group: work" {
+		t.Errorf("title = %q, want \"Group: work\"", dl.Title)
+	}
+}
+
+// ==============================
+// manageRepoModel — list screen
+// ==============================
+
+func newManageRepoModel(cfg *config.Config) manageRepoModel {
+	m := manageRepoModel{cfg: cfg}
+	m.list = m.buildList()
+	return m
+}
+
+func TestManageRepoModel_List_QuitKeys(t *testing.T) {
+	for _, msg := range []tea.Msg{pressChar('q'), pressCtrl('c')} {
+		m := newManageRepoModel(sampleCfg())
+		updated, _ := m.Update(msg)
+		result := updated.(manageRepoModel)
+		if !result.done {
+			t.Errorf("%T: done = false, want true", msg)
+		}
+	}
+}
+
+func TestManageRepoModel_List_EnterTransitionsToDetail(t *testing.T) {
+	m := newManageRepoModel(sampleCfg())
+
+	updated, _ := m.Update(pressKey(tea.KeyEnter))
+	result := updated.(manageRepoModel)
+	if result.screen != mrScreenDetail {
+		t.Errorf("screen = %v, want mrScreenDetail", result.screen)
+	}
+	if result.selectedRepo == "" {
+		t.Error("selectedRepo is empty after enter")
+	}
+}
+
+func TestManageRepoModel_List_ATransitionsToAdd(t *testing.T) {
+	m := newManageRepoModel(sampleCfg())
+
+	updated, _ := m.Update(pressChar('a'))
+	result := updated.(manageRepoModel)
+	if result.screen != mrScreenAdd {
+		t.Errorf("screen = %v, want mrScreenAdd", result.screen)
+	}
+}
+
+// ==============================
+// manageRepoModel — detail screen
+// ==============================
+
+func newManageRepoDetailModel(cfg *config.Config, repoURL string) manageRepoModel {
+	m := manageRepoModel{cfg: cfg, screen: mrScreenDetail, selectedRepo: repoURL}
+	m.list = m.buildList()
+	m.detailList = m.buildDetailList()
+	return m
+}
+
+func TestManageRepoModel_Detail_EscTransitionsBackToList(t *testing.T) {
+	m := newManageRepoDetailModel(sampleCfg(), "https://github.com/a/alpha.git")
+
+	updated, _ := m.Update(pressKey(tea.KeyEscape))
+	result := updated.(manageRepoModel)
+	if result.screen != mrScreenList {
+		t.Errorf("screen = %v, want mrScreenList", result.screen)
+	}
+}
+
+func TestManageRepoModel_Detail_ATransitionsToAddToGroup(t *testing.T) {
+	m := newManageRepoDetailModel(sampleCfg(), "https://github.com/a/alpha.git")
+
+	updated, _ := m.Update(pressChar('a'))
+	result := updated.(manageRepoModel)
+	if result.screen != mrScreenAddToGroup {
+		t.Errorf("screen = %v, want mrScreenAddToGroup", result.screen)
+	}
+}
+
+func TestManageRepoModel_Detail_RTransitionsToConfirmRemoveGroup(t *testing.T) {
+	// gamma.git has 2 groups — its detail list is non-empty so r can select one
+	m := newManageRepoDetailModel(sampleCfg(), "https://github.com/c/gamma.git")
+
+	updated, _ := m.Update(pressChar('r'))
+	result := updated.(manageRepoModel)
+	if result.screen != mrScreenConfirmRemoveGroup {
+		t.Errorf("screen = %v, want mrScreenConfirmRemoveGroup", result.screen)
+	}
+	if result.pendingGroup == "" {
+		t.Error("pendingGroup is empty after r in detail")
+	}
+}
+
+func TestManageRepoModel_AddToGroup_EscTransitionsBackToDetail(t *testing.T) {
+	m := manageRepoModel{
+		cfg:          sampleCfg(),
+		screen:       mrScreenAddToGroup,
+		selectedRepo: "https://github.com/a/alpha.git",
+	}
+	m.list = m.buildList()
+	m.detailList = m.buildDetailList()
+	m.groupList = m.buildGroupList()
+
+	updated, _ := m.Update(pressKey(tea.KeyEscape))
+	result := updated.(manageRepoModel)
+	if result.screen != mrScreenDetail {
+		t.Errorf("screen = %v, want mrScreenDetail", result.screen)
+	}
+}
+
+// ==============================
+// manageRepoModel — helper builders
+// ==============================
+
+func TestManageRepoModel_BuildDetailList_ReturnsGroupsForRepo(t *testing.T) {
+	// beta.git belongs to one group: "work"
+	m := manageRepoModel{cfg: sampleCfg(), selectedRepo: "https://github.com/b/beta.git"}
+	dl := m.buildDetailList()
+	if len(dl.Items()) != 1 {
+		t.Fatalf("detail list has %d items, want 1", len(dl.Items()))
+	}
+	if got := string(dl.Items()[0].(item)); got != "work" {
+		t.Errorf("items[0] = %q, want \"work\"", got)
+	}
+}
+
+func TestManageRepoModel_BuildGroupList_ExcludesAlreadyMemberGroups(t *testing.T) {
+	// beta.git is already in "work"; only "personal" should be offered
+	m := manageRepoModel{cfg: sampleCfg(), selectedRepo: "https://github.com/b/beta.git"}
+	gl := m.buildGroupList()
+	if len(gl.Items()) != 1 {
+		t.Fatalf("group list has %d items, want 1", len(gl.Items()))
+	}
+	if got := string(gl.Items()[0].(item)); got != "personal" {
+		t.Errorf("items[0] = %q, want \"personal\"", got)
+	}
+}
+
+func TestManageRepoModel_BuildGroupList_RepoWithNoGroupsSeesAll(t *testing.T) {
+	// alpha.git has no groups — both "work" and "personal" should be offered
+	m := manageRepoModel{cfg: sampleCfg(), selectedRepo: "https://github.com/a/alpha.git"}
+	gl := m.buildGroupList()
+	if len(gl.Items()) != 2 {
+		t.Fatalf("group list has %d items, want 2 (all groups)", len(gl.Items()))
+	}
+}
