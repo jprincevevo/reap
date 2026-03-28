@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/jprincevevo/reap/config"
@@ -14,10 +15,23 @@ import (
 
 const listHeight = 14
 
+// Color palette — shared across all TUI screens.
+// Uses LightDark to adapt to dark/light terminal backgrounds at startup.
+var lightDark = lipgloss.LightDark(lipgloss.HasDarkBackground(os.Stdin, os.Stdout))
+
 var (
-	titleStyle        = lipgloss.NewStyle().MarginLeft(2)
-	itemStyle         = lipgloss.NewStyle().PaddingLeft(4)
-	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170"))
+	colorAccent  = lightDark(lipgloss.Color("#FF9F1C"), lipgloss.Color("#FF9F1C")) // amber
+	colorSuccess = lightDark(lipgloss.Color("#2EC4B6"), lipgloss.Color("#2EC4B6")) // teal
+	colorError   = lightDark(lipgloss.Color("#b91c1c"), lipgloss.Color("#ef4444")) // red (semantic override)
+	colorDim     = lightDark(lipgloss.Color("#9ca3af"), lipgloss.Color("#6b7280")) // gray
+	colorMuted   = lightDark(lipgloss.Color("#a05c00"), lipgloss.Color("#FFBF69")) // peach / dark amber
+)
+
+var (
+	titleStyle        = lipgloss.NewStyle().Bold(true).Foreground(colorAccent).MarginLeft(2)
+	itemStyle         = lipgloss.NewStyle().PaddingLeft(4).Foreground(colorDim)
+	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(colorAccent)
+	cursorStyle       = lipgloss.NewStyle().Foreground(colorAccent)
 	paginationStyle   = list.DefaultStyles(false).PaginationStyle.PaddingLeft(4)
 	helpStyle         = list.DefaultStyles(false).HelpStyle.PaddingLeft(4).PaddingBottom(1)
 	quitTextStyle     = lipgloss.NewStyle().Margin(1, 0, 2, 4)
@@ -25,7 +39,7 @@ var (
 
 type item string
 
-func (i item) FilterValue() string { return "" }
+func (i item) FilterValue() string { return string(i) }
 
 type itemDelegate struct{}
 
@@ -69,6 +83,10 @@ func (m groupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		if m.list.FilterState() == list.Filtering {
+			break
+		}
+
 		switch keypress := msg.String(); keypress {
 		case "ctrl+c", "q":
 			m.quitting = true
@@ -124,7 +142,7 @@ func NewGroupModel(cfg *config.Config) groupModel {
 	l := list.New(groups, itemDelegate{}, defaultWidth, listHeight)
 	l.Title = "Select a group"
 	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
+	l.SetFilteringEnabled(true)
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle

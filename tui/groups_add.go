@@ -25,6 +25,10 @@ func (m groupAddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		if m.list.FilterState() == list.Filtering {
+			break
+		}
+
 		switch keypress := msg.String(); keypress {
 		case "ctrl+c", "q":
 			m.quitting = true
@@ -71,7 +75,7 @@ func NewGroupAddModel(cfg *config.Config) groupAddModel {
 	l := list.New(items, repoDelegate{}, defaultWidth, listHeight)
 	l.Title = "Select repositories to add to the group"
 	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
+	l.SetFilteringEnabled(true)
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle

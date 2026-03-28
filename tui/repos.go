@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jprincevevo/reap/config"
@@ -11,15 +13,43 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // ErrGoBack is returned by InitialRepoModel when the user presses escape to
 // go back to the previous screen.
 var ErrGoBack = errors.New("go back")
 
+var (
+	checkedBadgeStyle   = lipgloss.NewStyle().Foreground(colorSuccess)
+	uncheckedBadgeStyle = lipgloss.NewStyle().Foreground(colorDim)
+	existsBadgeStyle    = lipgloss.NewStyle().Foreground(colorMuted)
+	urlHostStyle        = lipgloss.NewStyle().Foreground(colorDim)
+)
+
+// splitURL splits a repository URL into a dim host prefix and the owner/repo
+// path. Supports SSH (git@host:owner/repo.git) and HTTPS/HTTP.
+func splitURL(rawURL string) (host, path string) {
+	if strings.HasPrefix(rawURL, "git@") {
+		if idx := strings.Index(rawURL, ":"); idx != -1 {
+			return rawURL[:idx+1], strings.TrimSuffix(rawURL[idx+1:], ".git")
+		}
+	}
+	for _, scheme := range []string{"https://", "http://"} {
+		if strings.HasPrefix(rawURL, scheme) {
+			rest := rawURL[len(scheme):]
+			if idx := strings.Index(rest, "/"); idx != -1 {
+				return scheme + rest[:idx+1], strings.TrimSuffix(rest[idx+1:], ".git")
+			}
+		}
+	}
+	return "", rawURL
+}
+
 type repoItem struct {
 	url      string
 	selected bool
+	exists   bool
 }
 
 func (i repoItem) FilterValue() string { return i.url }
@@ -42,16 +72,26 @@ func (d repoDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		return
 	}
 
-	str := fmt.Sprintf("%s %s", i.Description(), i.Title())
-
-	fn := itemStyle.Render
-	if index == m.Index() {
-		fn = func(s ...string) string {
-			return selectedItemStyle.Render("> " + strings.Join(s, " "))
-		}
+	var badge string
+	switch {
+	case i.selected:
+		badge = checkedBadgeStyle.Render("[✓]")
+	case i.exists:
+		badge = existsBadgeStyle.Render("[~]")
+	default:
+		badge = uncheckedBadgeStyle.Render("[ ]")
 	}
 
-	fmt.Fprint(w, fn(str))
+	host, path := splitURL(i.url)
+	urlStr := urlHostStyle.Render(host) + path
+
+	var line string
+	if index == m.Index() {
+		line = "  " + cursorStyle.Render(">") + " " + badge + " " + urlStr
+	} else {
+		line = "    " + badge + " " + urlStr
+	}
+	fmt.Fprint(w, line)
 }
 
 type repoModel struct {
@@ -73,12 +113,20 @@ func (m repoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		if m.list.FilterState() == list.Filtering {
+			break
+		}
+
 		switch keypress := msg.String(); keypress {
 		case "ctrl+c", "q":
 			m.quitting = true
 			return m, tea.Quit
 
 		case "esc":
+			if m.list.FilterState() == list.FilterApplied {
+				m.list.ResetFilter()
+				return m, nil
+			}
 			m.goBack = true
 			return m, tea.Quit
 
@@ -117,15 +165,31 @@ func (m repoModel) View() tea.View {
 	return v
 }
 
+func repoExists(url string) bool {
+	repoName := strings.TrimSuffix(filepath.Base(url), ".git")
+	_, err := os.Stat(repoName)
+	return err == nil
+}
+
 func NewRepoModel(cfg *config.Config, group string) repoModel {
 	var items []list.Item
 	for _, repo := range cfg.Repos {
 		if group == "Show All" {
-			items = append(items, repoItem{url: repo.URL, selected: repo.Selected})
+			exists := repoExists(repo.URL)
+			sel := repo.Selected
+			if exists {
+				sel = false
+			}
+			items = append(items, repoItem{url: repo.URL, selected: sel, exists: exists})
 		} else {
 			for _, g := range repo.Groups {
 				if g.Name == group {
-					items = append(items, repoItem{url: repo.URL, selected: g.Selected})
+					exists := repoExists(repo.URL)
+					sel := g.Selected
+					if exists {
+						sel = false
+					}
+					items = append(items, repoItem{url: repo.URL, selected: sel, exists: exists})
 				}
 			}
 		}
@@ -136,7 +200,7 @@ func NewRepoModel(cfg *config.Config, group string) repoModel {
 	l := list.New(items, repoDelegate{}, defaultWidth, listHeight)
 	l.Title = "Select repositories to clone"
 	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
+	l.SetFilteringEnabled(true)
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
@@ -151,12 +215,12 @@ func NewRepoModel(cfg *config.Config, group string) repoModel {
 				key.WithHelp("enter", "confirm"),
 			),
 			key.NewBinding(
-				key.WithKeys("esc"),
-				key.WithHelp("esc", "back"),
+				key.WithKeys("~"),
+				key.WithHelp("~", "already in dir"),
 			),
 			key.NewBinding(
-				key.WithKeys("ctrl+c", "q"),
-				key.WithHelp("ctrl+c/q", "quit"),
+				key.WithKeys("esc"),
+				key.WithHelp("esc", "back"),
 			),
 		}
 	}

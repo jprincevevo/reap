@@ -13,7 +13,15 @@ var repoCmd = &cobra.Command{
 	Use:   "repo",
 	Short: "Manage repositories",
 	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+		cfg, _, err := config.Load()
+		if err != nil {
+			fmt.Println("Error loading config:", err)
+			return
+		}
+
+		if err := tui.InitialManageReposModel(cfg); err != nil {
+			fmt.Println("Error:", err)
+		}
 	},
 }
 

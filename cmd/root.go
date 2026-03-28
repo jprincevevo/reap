@@ -18,6 +18,8 @@ import (
 
 var depth int
 var showVersion bool
+var cloneDir string
+var pullFlag bool
 
 var rootCmd = &cobra.Command{
 	Use:   "reap",
@@ -57,7 +59,7 @@ var rootCmd = &cobra.Command{
 
 		if len(args) > 0 {
 			<-updateDone
-			cloneRepos(args, depth)
+			cloneRepos(args, depth, cloneDir, pullFlag)
 			return
 		}
 
@@ -74,7 +76,7 @@ var rootCmd = &cobra.Command{
 		}
 
 		if len(selected) > 0 {
-			cloneRepos(selected, depth)
+			cloneRepos(selected, depth, cloneDir, pullFlag)
 		}
 	},
 }
@@ -82,9 +84,11 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.Flags().IntVar(&depth, "depth", 0, "Set the clone depth")
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Display version")
+	rootCmd.Flags().StringVar(&cloneDir, "dir", "", "Clone repositories into this directory")
+	rootCmd.Flags().BoolVar(&pullFlag, "pull", false, "Pull instead of clone for existing repos")
 }
 
-func cloneRepos(repos []string, depth int) {
+func cloneRepos(repos []string, depth int, dir string, pull bool) {
 	cmd := exec.Command("git", "rev-parse", "--is-inside-work-tree")
 	if err := cmd.Run(); err == nil {
 		confirmed, err := tui.InitialConfirmModel("This directory is a git repository. Continue?")
@@ -94,7 +98,7 @@ func cloneRepos(repos []string, depth int) {
 		}
 	}
 
-	if err := tui.InitialCloneModel(repos, depth); err != nil {
+	if err := tui.InitialCloneModel(repos, depth, dir, pull); err != nil {
 		fmt.Println("Error cloning repositories:", err)
 	}
 }
