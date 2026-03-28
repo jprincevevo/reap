@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	tea "charm.land/bubbletea/v2"
 	"github.com/creativeprojects/go-selfupdate"
 	"github.com/jprincevevo/reap/config"
 	"github.com/jprincevevo/reap/tui"
@@ -29,6 +30,15 @@ var rootCmd = &cobra.Command{
 		if showVersion {
 			fmt.Printf("reap version %s\n", version.Version)
 			return
+		}
+
+		if os.Getenv("REAP_DEBUG") != "" {
+			f, err := tea.LogToFile("/tmp/reap-debug.log", "reap")
+			if err != nil {
+				fmt.Println("warning: could not open debug log:", err)
+			} else {
+				defer f.Close()
+			}
 		}
 
 		updateDone := make(chan struct{})

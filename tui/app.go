@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/jprincevevo/reap/config"
 
@@ -17,6 +18,7 @@ const (
 	appScreenGroups                    // manageGroupModel
 	appScreenRepos                     // manageRepoModel
 	appScreenSettings                  // settingsModel
+	appScreenPasteAdd                  // paste/drop URL confirmation + group selection
 )
 
 // appModel is the single root model passed to tea.NewProgram for the main
@@ -24,14 +26,16 @@ const (
 // preventing the alt-screen flash that would occur if multiple tea.Programs
 // were run back-to-back.
 type appModel struct {
-	cfg      *config.Config
-	screen   appScreen
-	home     groupModel
-	repo     repoModel
-	groups   manageGroupModel
-	repos    manageRepoModel
-	settings settingsModel
-	width    int
+	cfg        *config.Config
+	screen     appScreen
+	home       groupModel
+	repo       repoModel
+	groups     manageGroupModel
+	repos      manageRepoModel
+	settings   settingsModel
+	pasteAdd   pasteAddModel
+	prevScreen appScreen
+	width      int
 }
 
 func (m appModel) Init() tea.Cmd {
@@ -39,9 +43,30 @@ func (m appModel) Init() tea.Cmd {
 }
 
 func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	log.Printf("screen=%d msg=%T %+v", m.screen, msg, msg)
+
 	// Always capture the terminal width so we can immediately size new screens.
 	if wsm, ok := msg.(tea.WindowSizeMsg); ok {
 		m.width = wsm.Width
+	}
+
+	// Intercept paste/drop events on every screen: if a valid GitHub URL is
+	// detected, transition to the paste-add confirmation flow.
+	if paste, ok := msg.(tea.PasteMsg); ok {
+		if sanitized, valid := sanitizeGitHubURL(paste.Content); valid {
+			preselected := ""
+			if m.screen == appScreenGroups && m.groups.screen == mgScreenDetail {
+				preselected = m.groups.selectedGroup
+			}
+			m.pasteAdd = newPasteAddModel(m.cfg, sanitized, preselected)
+			if m.width > 0 {
+				m.pasteAdd.width = m.width
+				m.pasteAdd.groupList.SetSize(m.width, listHeight)
+			}
+			m.prevScreen = m.screen
+			m.screen = appScreenPasteAdd
+			return m, nil
+		}
 	}
 
 	switch m.screen {
@@ -165,6 +190,23 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		return m, cmd
+
+	case appScreenPasteAdd:
+		newPA, cmd := m.pasteAdd.Update(msg)
+		m.pasteAdd = newPA.(pasteAddModel)
+
+		if m.pasteAdd.done || m.pasteAdd.cancelled {
+			// Rebuild home to reflect any config changes, then return there.
+			m.screen = appScreenHome
+			m.home = NewGroupModel(m.cfg)
+			if m.width > 0 {
+				m.home.list.SetSize(m.width, listHeight)
+				m.home.ready = true
+			}
+			return m, nil // discard the tea.Quit the child sent
+		}
+
+		return m, cmd
 	}
 
 	return m, nil
@@ -182,6 +224,8 @@ func (m appModel) View() tea.View {
 		return m.repos.View()
 	case appScreenSettings:
 		return m.settings.View()
+	case appScreenPasteAdd:
+		return m.pasteAdd.View()
 	}
 	return tea.NewView("")
 }
