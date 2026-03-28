@@ -61,6 +61,9 @@ func (i repoItem) Description() string {
 	return "[ ]"
 }
 
+func (i repoItem) isSelected() bool              { return i.selected }
+func (i repoItem) withSelected(s bool) list.Item { i.selected = s; return i }
+
 type repoDelegate struct{}
 
 func (d repoDelegate) Height() int                             { return 1 }
@@ -73,13 +76,10 @@ func (d repoDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	}
 
 	var badge string
-	switch {
-	case i.selected:
-		badge = checkedBadgeStyle.Render("[✓]")
-	case i.exists:
+	if i.exists && !i.selected {
 		badge = existsBadgeStyle.Render("[~]")
-	default:
-		badge = uncheckedBadgeStyle.Render("[ ]")
+	} else {
+		badge = selectBadge(i.selected)
 	}
 
 	host, path := splitURL(i.url)
@@ -95,7 +95,7 @@ func (d repoDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 }
 
 type repoModel struct {
-	list     list.Model
+	list     selectListModel
 	quitting bool
 	goBack   bool
 	ready    bool
@@ -106,45 +106,17 @@ func (m repoModel) Init() tea.Cmd {
 }
 
 func (m repoModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, listHeight)
+	// Set ready on WindowSizeMsg before delegating, so the flag is never
+	// inadvertently reset by syncing from the inner list (which starts with
+	// ready=false and may not have received a WindowSizeMsg if the parent
+	// marked repoModel ready externally).
+	if _, ok := msg.(tea.WindowSizeMsg); ok {
 		m.ready = true
-		return m, nil
-
-	case tea.KeyPressMsg:
-		if m.list.FilterState() == list.Filtering {
-			break
-		}
-
-		switch keypress := msg.String(); keypress {
-		case "ctrl+c", "q":
-			m.quitting = true
-			return m, tea.Quit
-
-		case "esc":
-			if m.list.FilterState() == list.FilterApplied {
-				m.list.ResetFilter()
-				return m, nil
-			}
-			m.goBack = true
-			return m, tea.Quit
-
-		case "enter":
-			return m, tea.Quit
-
-		case "space":
-			if i, ok := m.list.SelectedItem().(repoItem); ok {
-				i.selected = !i.selected
-				cmd := m.list.SetItem(m.list.Index(), i)
-				return m, cmd
-			}
-			return m, nil
-		}
 	}
-
-	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
+	newList, cmd := m.list.Update(msg)
+	m.list = newList.(selectListModel)
+	m.quitting = m.list.quitting
+	m.goBack = m.list.goBack
 	return m, cmd
 }
 
@@ -167,12 +139,14 @@ func (m repoModel) View() tea.View {
 	m.list.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "toggle")),
+			key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", "select all")),
+			key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "deselect all")),
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", enterHelp)),
 			key.NewBinding(key.WithKeys("~"), key.WithHelp("~", "already in dir")),
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
 	}
-	v := tea.NewView("\n" + m.list.View())
+	v := tea.NewView("\n" + m.list.Model.View())
 	v.AltScreen = true
 	return v
 }
@@ -207,7 +181,7 @@ func NewRepoModel(cfg *config.Config, group string) repoModel {
 		}
 	}
 
-	l := newList(items, repoDelegate{}, "Select repositories to clone")
+	l := newSelectList(items, repoDelegate{}, "Select repositories to clone")
 
 	return repoModel{list: l}
 }

@@ -59,7 +59,9 @@ type groupSelectItem struct {
 	selected bool
 }
 
-func (g groupSelectItem) FilterValue() string { return g.name }
+func (g groupSelectItem) FilterValue() string           { return g.name }
+func (g groupSelectItem) isSelected() bool              { return g.selected }
+func (g groupSelectItem) withSelected(s bool) list.Item { g.selected = s; return g }
 
 type groupSelectDelegate struct{}
 
@@ -72,12 +74,7 @@ func (d groupSelectDelegate) Render(w io.Writer, m list.Model, index int, listIt
 		return
 	}
 
-	checkbox := "[ ]"
-	if gi.selected {
-		checkbox = "[x]"
-	}
-
-	str := checkbox + " " + gi.name
+	str := selectBadge(gi.selected) + " " + gi.name
 
 	fn := itemStyle.Render
 	if index == m.Index() {
@@ -102,7 +99,7 @@ type pasteAddModel struct {
 	cfg       *config.Config
 	screen    pasteAddScreen
 	url       string
-	groupList list.Model
+	groupList selectListModel
 	hasGroups bool // whether any groups exist (skip group screen if false)
 	done      bool
 	cancelled bool // esc — soft cancel, appModel transitions back; no tea.Quit propagation
@@ -125,10 +122,12 @@ func newPasteAddModel(cfg *config.Config, sanitizedURL, preselected string) past
 		}
 	}
 
-	l := newList(items, groupSelectDelegate{}, "Add to groups (optional)")
+	l := newSelectList(items, groupSelectDelegate{}, "Add to groups (optional)")
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "toggle")),
+			key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", "select all")),
+			key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "deselect all")),
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "confirm")),
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
@@ -148,7 +147,9 @@ func (m pasteAddModel) Init() tea.Cmd { return nil }
 func (m pasteAddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if wsm, ok := msg.(tea.WindowSizeMsg); ok {
 		m.width = wsm.Width
-		m.groupList.SetSize(wsm.Width, listHeight)
+		// Route through selectListModel.Update so it sizes the list and sets ready.
+		newGL, _ := m.groupList.Update(wsm)
+		m.groupList = newGL.(selectListModel)
 		return m, nil
 	}
 
@@ -191,36 +192,23 @@ func (m pasteAddModel) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m pasteAddModel) updateGroups(msg tea.Msg) (tea.Model, tea.Cmd) {
-	kp, ok := msg.(tea.KeyPressMsg)
-	if !ok {
-		var cmd tea.Cmd
-		m.groupList, cmd = m.groupList.Update(msg)
-		return m, cmd
+	newGL, cmd := m.groupList.Update(msg)
+	m.groupList = newGL.(selectListModel)
+
+	if m.groupList.quitting {
+		return m, cmd // hard quit — propagate tea.Quit
 	}
 
-	if m.groupList.FilterState() == list.Filtering {
-		var cmd tea.Cmd
-		m.groupList, cmd = m.groupList.Update(msg)
-		return m, cmd
-	}
-
-	switch kp.String() {
-	case "ctrl+c", "q":
-		return m, tea.Quit
-
-	case "esc":
+	if m.groupList.goBack {
+		// Esc from the groups screen — go back to confirm without quitting.
+		// Reset the flag so the list works correctly if the user re-enters.
+		m.groupList.goBack = false
 		m.screen = pasteAddScreenConfirm
 		return m, nil
+	}
 
-	case "space":
-		if gi, ok := m.groupList.SelectedItem().(groupSelectItem); ok {
-			gi.selected = !gi.selected
-			cmd := m.groupList.SetItem(m.groupList.Index(), gi)
-			return m, cmd
-		}
-		return m, nil
-
-	case "enter":
+	if m.groupList.done {
+		m.groupList.done = false
 		m.cfg.AddRepo(m.url)
 		for _, listItem := range m.groupList.Items() {
 			gi, ok := listItem.(groupSelectItem)
@@ -237,13 +225,11 @@ func (m pasteAddModel) updateGroups(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-	logSaveErr(config.Save(m.cfg))
-	m.done = true
-	return m, tea.Quit
-}
+		logSaveErr(config.Save(m.cfg))
+		m.done = true
+		return m, tea.Quit
+	}
 
-	var cmd tea.Cmd
-	m.groupList, cmd = m.groupList.Update(msg)
 	return m, cmd
 }
 
@@ -268,7 +254,7 @@ func (m pasteAddModel) View() tea.View {
 		return v
 
 	case pasteAddScreenGroups:
-		v := tea.NewView("\n" + m.groupList.View())
+		v := tea.NewView("\n" + m.groupList.Model.View())
 		v.AltScreen = true
 		return v
 	}

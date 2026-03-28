@@ -120,7 +120,6 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-
 		// User quit (or still browsing) — propagate as-is.
 		return m, cmd
 

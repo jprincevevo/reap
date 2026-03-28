@@ -7,76 +7,24 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-type groupAddModel struct {
-	list     list.Model
-	quitting bool
-	ready    bool
-}
+// groupAddModel is a multi-select list used when creating a new group to pick
+// which repos belong to it. It is a type alias for selectListModel so all
+// selectable-list behaviour (space toggle, ctrl+a select all, ctrl+d deselect
+// all, enter confirm) is provided automatically.
+type groupAddModel = selectListModel
 
-func (m groupAddModel) Init() tea.Cmd {
-	return nil
-}
-
-func (m groupAddModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, listHeight)
-		m.ready = true
-		return m, nil
-
-	case tea.KeyPressMsg:
-		if m.list.FilterState() == list.Filtering {
-			break
-		}
-
-		switch keypress := msg.String(); keypress {
-		case "ctrl+c", "q":
-			m.quitting = true
-			return m, tea.Quit
-
-		case "enter":
-			return m, tea.Quit
-
-		case "space":
-			if i, ok := m.list.SelectedItem().(repoItem); ok {
-				i.selected = !i.selected
-				cmd := m.list.SetItem(m.list.Index(), i)
-				return m, cmd
-			}
-			return m, nil
-		}
-	}
-
-	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
-	return m, cmd
-}
-
-func (m groupAddModel) View() tea.View {
-	if !m.ready {
-		v := tea.NewView("")
-		v.AltScreen = true
-		return v
-	}
-	if m.quitting {
-		return tea.NewView(quitTextStyle.Render("Cancelling..."))
-	}
-	v := tea.NewView("\n" + m.list.View())
-	v.AltScreen = true
-	return v
-}
-
+// NewGroupAddModel returns a ready-to-use group-add selectable list populated
+// with every repo in the config, all starting unselected.
 func NewGroupAddModel(cfg *config.Config) groupAddModel {
 	var items []list.Item
 	for _, repo := range cfg.Repos {
 		items = append(items, repoItem{url: repo.URL, selected: false})
 	}
-
-	l := newList(items, repoDelegate{}, "Select repositories to add to the group")
-
-	return groupAddModel{list: l}
+	return newSelectList(items, repoDelegate{}, "Select repositories to add to the group")
 }
 
+// InitialGroupAddModel runs a standalone program and returns the URLs of the
+// repos the user selected.
 func InitialGroupAddModel(cfg *config.Config) ([]string, error) {
 	m := NewGroupAddModel(cfg)
 
@@ -88,9 +36,9 @@ func InitialGroupAddModel(cfg *config.Config) ([]string, error) {
 	}
 
 	var selected []string
-	if m, ok := finalModel.(groupAddModel); ok {
-		for _, item := range m.list.Items() {
-			if i, ok := item.(repoItem); ok && i.selected {
+	if m, ok := finalModel.(selectListModel); ok {
+		for _, listItem := range m.Items() {
+			if i, ok := listItem.(repoItem); ok && i.selected {
 				selected = append(selected, i.url)
 			}
 		}

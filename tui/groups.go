@@ -26,6 +26,16 @@ const (
 	showAllRepos = "Show all repos"
 )
 
+// selectBadge returns the styled "[✓]" or "[ ]" badge used by all selectable
+// list delegates and toggle views. Centralising the rendering here ensures a
+// consistent look across every screen.
+func selectBadge(selected bool) string {
+	if selected {
+		return checkedBadgeStyle.Render("[✓]")
+	}
+	return uncheckedBadgeStyle.Render("[ ]")
+}
+
 // logSaveErr prints a config save error to stdout. config.Save failures cannot
 // be surfaced through the TUI event loop, so stderr/stdout is the fallback.
 func logSaveErr(err error) {
@@ -120,7 +130,7 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 }
 
 type groupModel struct {
-	list      list.Model
+	list      navListModel
 	choice    string
 	quitting  bool
 	ready     bool
@@ -133,34 +143,26 @@ func (m groupModel) Init() tea.Cmd {
 }
 
 func (m groupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, listHeight)
-		m.width = msg.Width
+	if wsm, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = wsm.Width
 		m.ready = true
-		return m, nil
-
-	case tea.KeyPressMsg:
-		if m.list.FilterState() == list.Filtering {
-			break
-		}
-
-		switch keypress := msg.String(); keypress {
-		case "ctrl+c", "q":
-			m.quitting = true
-			return m, tea.Quit
-
-		case "enter":
-			i, ok := m.list.SelectedItem().(item)
-			if ok {
-				m.choice = string(i)
-			}
-			return m, tea.Quit
-		}
 	}
 
+	var event navListEvent
 	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
+	m.list, event, cmd = m.list.Update(msg)
+
+	switch event {
+	case navListEventQuit, navListEventGoBack:
+		m.quitting = true
+		return m, tea.Quit
+	case navListEventEnter:
+		if i, ok := m.list.SelectedItem().(item); ok {
+			m.choice = string(i)
+		}
+		return m, tea.Quit
+	}
+
 	return m, cmd
 }
 
@@ -215,7 +217,7 @@ func NewGroupModel(cfg *config.Config) groupModel {
 		}
 	}
 
-	l := newList(groups, itemDelegate{}, "Select a group")
+	l := newNavList(groups, itemDelegate{}, "Select a group")
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "groups")),

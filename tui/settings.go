@@ -76,16 +76,16 @@ func (m settingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if err != nil {
 					d = 0
 				}
-			m.cfg.DefaultDepth = d
-			logSaveErr(config.Save(m.cfg))
+				m.cfg.DefaultDepth = d
+				logSaveErr(config.Save(m.cfg))
 				m.field = settingsFieldDir
 				m.prompt = NewPromptModel("Default clone directory (empty = current directory)", "")
 				if m.cfg.DefaultDir != "" {
 					m.prompt.input.SetValue(m.cfg.DefaultDir)
 				}
 			} else {
-			m.cfg.DefaultDir = m.prompt.input.Value()
-			logSaveErr(config.Save(m.cfg))
+				m.cfg.DefaultDir = m.prompt.input.Value()
+				logSaveErr(config.Save(m.cfg))
 				m.field = settingsFieldPull
 			}
 			return m, nil
@@ -100,8 +100,8 @@ func (m settingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.pull = !m.pull
 				return m, nil
 			case "enter":
-			m.cfg.DefaultPull = m.pull
-			logSaveErr(config.Save(m.cfg))
+				m.cfg.DefaultPull = m.pull
+				logSaveErr(config.Save(m.cfg))
 				m.goBack = true
 				return m, tea.Quit
 			}
@@ -121,12 +121,11 @@ func (m settingsModel) View() tea.View {
 		return m.prompt.View()
 
 	case settingsFieldPull:
-		var badge string
+		pullLabel := " Pull (off)"
 		if m.pull {
-			badge = checkedBadgeStyle.Render("[✓]") + " Pull (on)"
-		} else {
-			badge = uncheckedBadgeStyle.Render("[ ]") + " Pull (off)"
+			pullLabel = " Pull (on)"
 		}
+		badge := selectBadge(m.pull) + pullLabel
 		content := "\n" + titleStyle.Render("Pull existing repos") + "\n\n" +
 			"  " + badge + "\n\n" +
 			"  space toggle  enter confirm  esc back\n"

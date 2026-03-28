@@ -10,7 +10,7 @@ import (
 )
 
 type removeModel struct {
-	list     list.Model
+	list     navListModel
 	choice   string
 	quitting bool
 	ready    bool
@@ -21,29 +21,25 @@ func (m removeModel) Init() tea.Cmd {
 }
 
 func (m removeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, listHeight)
+	if _, ok := msg.(tea.WindowSizeMsg); ok {
 		m.ready = true
-		return m, nil
-
-	case tea.KeyPressMsg:
-		switch keypress := msg.String(); keypress {
-		case "ctrl+c", "q":
-			m.quitting = true
-			return m, tea.Quit
-
-		case "enter":
-			i, ok := m.list.SelectedItem().(item)
-			if ok {
-				m.choice = string(i)
-			}
-			return m, tea.Quit
-		}
 	}
 
+	var event navListEvent
 	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
+	m.list, event, cmd = m.list.Update(msg)
+
+	switch event {
+	case navListEventQuit:
+		m.quitting = true
+		return m, cmd
+	case navListEventEnter:
+		if i, ok := m.list.SelectedItem().(item); ok {
+			m.choice = string(i)
+		}
+		return m, tea.Quit
+	}
+
 	return m, cmd
 }
 
@@ -68,7 +64,7 @@ func NewRemoveModel(cfg *config.Config) removeModel {
 		items = append(items, item(repo.URL))
 	}
 
-	l := newList(items, itemDelegate{}, "Select a repository to remove")
+	l := newNavList(items, itemDelegate{}, "Select a repository to remove")
 	l.SetFilteringEnabled(false) // removal list intentionally has no filter
 
 	return removeModel{list: l}

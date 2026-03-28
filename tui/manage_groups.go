@@ -10,7 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-
 type manageGroupScreen int
 
 const (
@@ -27,11 +26,11 @@ const (
 type manageGroupModel struct {
 	cfg           *config.Config
 	screen        manageGroupScreen
-	list          list.Model
-	detailList    list.Model
-	repoList      list.Model
+	list          navListModel
+	detailList    navListModel
+	repoList      navListModel
 	prompt        promptModel
-	groupAdd      groupAddModel
+	groupAdd      selectListModel
 	width         int
 	ready         bool
 	goBack        bool
@@ -44,7 +43,7 @@ func (m manageGroupModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m manageGroupModel) buildList() list.Model {
+func (m manageGroupModel) buildList() navListModel {
 	var items []list.Item
 	seen := make(map[string]bool)
 	for _, repo := range m.cfg.Repos {
@@ -56,7 +55,7 @@ func (m manageGroupModel) buildList() list.Model {
 		}
 	}
 
-	l := newList(items, itemDelegate{}, "Manage groups")
+	l := newNavList(items, itemDelegate{}, "Manage groups")
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
@@ -71,7 +70,7 @@ func (m manageGroupModel) buildList() list.Model {
 	return l
 }
 
-func (m manageGroupModel) buildDetailList() list.Model {
+func (m manageGroupModel) buildDetailList() navListModel {
 	var items []list.Item
 	for _, repo := range m.cfg.Repos {
 		for _, g := range repo.Groups {
@@ -82,7 +81,7 @@ func (m manageGroupModel) buildDetailList() list.Model {
 		}
 	}
 
-	l := newList(items, itemDelegate{}, "Group: "+m.selectedGroup)
+	l := newNavList(items, itemDelegate{}, "Group: "+m.selectedGroup)
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add repo")),
@@ -97,7 +96,7 @@ func (m manageGroupModel) buildDetailList() list.Model {
 }
 
 // buildRepoAddList returns all repos that are NOT already in m.selectedGroup.
-func (m manageGroupModel) buildRepoAddList() list.Model {
+func (m manageGroupModel) buildRepoAddList() navListModel {
 	var items []list.Item
 	for _, repo := range m.cfg.Repos {
 		inGroup := false
@@ -112,7 +111,7 @@ func (m manageGroupModel) buildRepoAddList() list.Model {
 		}
 	}
 
-	l := newList(items, itemDelegate{}, "Add repo to: "+m.selectedGroup)
+	l := newNavList(items, itemDelegate{}, "Add repo to: "+m.selectedGroup)
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
@@ -152,35 +151,13 @@ func (m manageGroupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m manageGroupModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.list.SetSize(msg.Width, listHeight)
+	if _, ok := msg.(tea.WindowSizeMsg); ok {
 		m.ready = true
-		return m, nil
+	}
 
-	case tea.KeyPressMsg:
-		if m.list.FilterState() == list.Filtering {
-			break
-		}
-
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-
-		case "esc":
-			m.goBack = true
-			return m, tea.Quit
-
-		case "enter":
-			sel, ok := m.list.SelectedItem().(item)
-			if !ok {
-				return m, nil
-			}
-			m.selectedGroup = string(sel)
-			m.screen = mgScreenDetail
-			m.detailList = m.buildDetailList()
-			return m, nil
-
+	// Domain-specific keys handled before passing to navListModel.
+	if kp, ok := msg.(tea.KeyPressMsg); ok && m.list.FilterState() != list.Filtering {
+		switch kp.String() {
 		case "a":
 			m.screen = mgScreenAdd
 			m.prompt = NewPromptModel("New group name", "my-group")
@@ -214,31 +191,34 @@ func (m manageGroupModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	var event navListEvent
 	var cmd tea.Cmd
-	m.list, cmd = m.list.Update(msg)
+	m.list, event, cmd = m.list.Update(msg)
+
+	switch event {
+	case navListEventQuit:
+		return m, cmd
+	case navListEventGoBack:
+		m.goBack = true
+		return m, tea.Quit
+	case navListEventEnter:
+		sel, ok := m.list.SelectedItem().(item)
+		if !ok {
+			return m, nil
+		}
+		m.selectedGroup = string(sel)
+		m.screen = mgScreenDetail
+		m.detailList = m.buildDetailList()
+		return m, nil
+	}
+
 	return m, cmd
 }
 
 func (m manageGroupModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.detailList.SetSize(msg.Width, listHeight)
-		return m, nil
-
-	case tea.KeyPressMsg:
-		if m.detailList.FilterState() == list.Filtering {
-			break
-		}
-
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-
-		case "esc":
-			m.screen = mgScreenList
-			m.list = m.buildList()
-			return m, nil
-
+	// Domain-specific keys handled before passing to navListModel.
+	if kp, ok := msg.(tea.KeyPressMsg); ok && m.detailList.FilterState() != list.Filtering {
+		switch kp.String() {
 		case "a":
 			m.screen = mgScreenAddRepoToGroup
 			m.repoList = m.buildRepoAddList()
@@ -260,66 +240,68 @@ func (m manageGroupModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	var event navListEvent
 	var cmd tea.Cmd
-	m.detailList, cmd = m.detailList.Update(msg)
+	m.detailList, event, cmd = m.detailList.Update(msg)
+
+	switch event {
+	case navListEventQuit:
+		return m, cmd
+	case navListEventGoBack:
+		m.screen = mgScreenList
+		m.list = m.buildList()
+		return m, nil
+	}
+
 	return m, cmd
 }
 
 func (m manageGroupModel) updateAddRepoToGroup(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.repoList.SetSize(msg.Width, listHeight)
+	var event navListEvent
+	var cmd tea.Cmd
+	m.repoList, event, cmd = m.repoList.Update(msg)
+
+	switch event {
+	case navListEventQuit:
+		return m, cmd
+
+	case navListEventGoBack:
+		m.screen = mgScreenDetail
+		m.detailList = m.buildDetailList()
 		return m, nil
 
-	case tea.KeyPressMsg:
-		if m.repoList.FilterState() == list.Filtering {
-			break
-		}
-
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-
-		case "esc":
+	case navListEventEnter:
+		sel, ok := m.repoList.SelectedItem().(item)
+		if !ok {
 			m.screen = mgScreenDetail
 			m.detailList = m.buildDetailList()
 			return m, nil
-
-		case "enter":
-			sel, ok := m.repoList.SelectedItem().(item)
-			if !ok {
-				m.screen = mgScreenDetail
-				m.detailList = m.buildDetailList()
-				return m, nil
-			}
-			repoURL := string(sel)
-			for i, repo := range m.cfg.Repos {
-				if repo.URL == repoURL {
-					alreadyHas := false
-					for _, g := range repo.Groups {
-						if g.Name == m.selectedGroup {
-							alreadyHas = true
-							break
-						}
+		}
+		repoURL := string(sel)
+		for i, repo := range m.cfg.Repos {
+			if repo.URL == repoURL {
+				alreadyHas := false
+				for _, g := range repo.Groups {
+					if g.Name == m.selectedGroup {
+						alreadyHas = true
+						break
 					}
-					if !alreadyHas {
-						m.cfg.Repos[i].Groups = append(m.cfg.Repos[i].Groups, config.Group{
-							Name:     m.selectedGroup,
-							Selected: true,
-						})
-					}
-					break
 				}
+				if !alreadyHas {
+					m.cfg.Repos[i].Groups = append(m.cfg.Repos[i].Groups, config.Group{
+						Name:     m.selectedGroup,
+						Selected: true,
+					})
+				}
+				break
 			}
-			logSaveErr(config.Save(m.cfg))
-			m.screen = mgScreenDetail
-			m.detailList = m.buildDetailList()
-			return m, nil
 		}
+		logSaveErr(config.Save(m.cfg))
+		m.screen = mgScreenDetail
+		m.detailList = m.buildDetailList()
+		return m, nil
 	}
 
-	var cmd tea.Cmd
-	m.repoList, cmd = m.repoList.Update(msg)
 	return m, cmd
 }
 
@@ -334,7 +316,7 @@ func (m manageGroupModel) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.screen = mgScreenAddRepos
 			m.groupAdd = NewGroupAddModel(m.cfg)
 			if m.width > 0 {
-				m.groupAdd.list.SetSize(m.width, listHeight)
+				m.groupAdd.SetSize(m.width, listHeight)
 				m.groupAdd.ready = true
 			}
 			return m, nil
@@ -349,7 +331,7 @@ func (m manageGroupModel) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m manageGroupModel) updateAddRepos(msg tea.Msg) (tea.Model, tea.Cmd) {
 	newGA, cmd := m.groupAdd.Update(msg)
-	m.groupAdd = newGA.(groupAddModel)
+	m.groupAdd = newGA.(selectListModel)
 
 	if m.groupAdd.quitting {
 		m.screen = mgScreenList
@@ -357,14 +339,9 @@ func (m manageGroupModel) updateAddRepos(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	finished := false
-	if km, ok := msg.(tea.KeyPressMsg); ok && km.String() == "enter" {
-		finished = true
-	}
-
-	if finished {
+	if m.groupAdd.done {
 		var selectedURLs []string
-		for _, listItem := range m.groupAdd.list.Items() {
+		for _, listItem := range m.groupAdd.Items() {
 			if ri, ok := listItem.(repoItem); ok && ri.selected {
 				selectedURLs = append(selectedURLs, ri.url)
 			}
