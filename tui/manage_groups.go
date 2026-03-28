@@ -65,6 +65,7 @@ const (
 	mgScreenConfirmDelete
 	mgScreenDetail
 	mgScreenConfirmRemoveRepo
+	mgScreenAddRepoToGroup
 )
 
 type manageGroupModel struct {
@@ -72,6 +73,7 @@ type manageGroupModel struct {
 	screen        manageGroupScreen
 	list          list.Model
 	detailList    list.Model
+	repoList      list.Model
 	prompt        promptModel
 	groupAdd      groupAddModel
 	width         int
@@ -106,12 +108,13 @@ func (m manageGroupModel) buildList() list.Model {
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
+	l.Help.Styles = dimHelpStyles
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
 			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rename")),
 			key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
-			key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "done")),
+			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
 	}
 
@@ -141,9 +144,49 @@ func (m manageGroupModel) buildDetailList() list.Model {
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
+	l.Help.Styles = dimHelpStyles
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
-			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "remove repo")),
+			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add repo")),
+			key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "remove repo")),
+			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		}
+	}
+
+	if m.width > 0 {
+		l.SetSize(m.width, listHeight)
+	}
+
+	return l
+}
+
+// buildRepoAddList returns all repos that are NOT already in m.selectedGroup.
+func (m manageGroupModel) buildRepoAddList() list.Model {
+	var items []list.Item
+	for _, repo := range m.cfg.Repos {
+		inGroup := false
+		for _, g := range repo.Groups {
+			if g.Name == m.selectedGroup {
+				inGroup = true
+				break
+			}
+		}
+		if !inGroup {
+			items = append(items, item(repo.URL))
+		}
+	}
+
+	const defaultWidth = 20
+	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
+	l.Title = "Add repo to: " + m.selectedGroup
+	l.SetShowStatusBar(false)
+	l.SetFilteringEnabled(true)
+	l.Styles.Title = titleStyle
+	l.Styles.PaginationStyle = paginationStyle
+	l.Styles.HelpStyle = helpStyle
+	l.Help.Styles = dimHelpStyles
+	l.AdditionalShortHelpKeys = func() []key.Binding {
+		return []key.Binding{
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
 	}
@@ -175,6 +218,8 @@ func (m manageGroupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateDetail(msg)
 	case mgScreenConfirmRemoveRepo:
 		return m.updateConfirmRemoveRepo(msg)
+	case mgScreenAddRepoToGroup:
+		return m.updateAddRepoToGroup(msg)
 	}
 
 	return m, nil
@@ -193,10 +238,10 @@ func (m manageGroupModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c":
+		case "ctrl+c", "q":
 			return m, tea.Quit
 
-		case "q", "esc":
+		case "esc":
 			m.goBack = true
 			return m, tea.Quit
 
@@ -260,15 +305,20 @@ func (m manageGroupModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c":
+		case "ctrl+c", "q":
 			return m, tea.Quit
 
-		case "q", "esc":
+		case "esc":
 			m.screen = mgScreenList
 			m.list = m.buildList()
 			return m, nil
 
-		case "r":
+		case "a":
+			m.screen = mgScreenAddRepoToGroup
+			m.repoList = m.buildRepoAddList()
+			return m, nil
+
+		case "d":
 			sel, ok := m.detailList.SelectedItem().(item)
 			if !ok {
 				return m, nil
@@ -286,6 +336,66 @@ func (m manageGroupModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.detailList, cmd = m.detailList.Update(msg)
+	return m, cmd
+}
+
+func (m manageGroupModel) updateAddRepoToGroup(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.repoList.SetSize(msg.Width, listHeight)
+		return m, nil
+
+	case tea.KeyPressMsg:
+		if m.repoList.FilterState() == list.Filtering {
+			break
+		}
+
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+
+		case "esc":
+			m.screen = mgScreenDetail
+			m.detailList = m.buildDetailList()
+			return m, nil
+
+		case "enter":
+			sel, ok := m.repoList.SelectedItem().(item)
+			if !ok {
+				m.screen = mgScreenDetail
+				m.detailList = m.buildDetailList()
+				return m, nil
+			}
+			repoURL := string(sel)
+			for i, repo := range m.cfg.Repos {
+				if repo.URL == repoURL {
+					alreadyHas := false
+					for _, g := range repo.Groups {
+						if g.Name == m.selectedGroup {
+							alreadyHas = true
+							break
+						}
+					}
+					if !alreadyHas {
+						m.cfg.Repos[i].Groups = append(m.cfg.Repos[i].Groups, config.Group{
+							Name:     m.selectedGroup,
+							Selected: true,
+						})
+					}
+					break
+				}
+			}
+			if err := config.Save(m.cfg); err != nil {
+				fmt.Println("Error saving config:", err)
+			}
+			m.screen = mgScreenDetail
+			m.detailList = m.buildDetailList()
+			return m, nil
+		}
+	}
+
+	var cmd tea.Cmd
+	m.repoList, cmd = m.repoList.Update(msg)
 	return m, cmd
 }
 
@@ -439,6 +549,15 @@ func (m manageGroupModel) View() tea.View {
 		v := tea.NewView("\n" + m.detailList.View())
 		v.AltScreen = true
 		return v
+	case mgScreenAddRepoToGroup:
+		if !m.ready {
+			v := tea.NewView("")
+			v.AltScreen = true
+			return v
+		}
+		v := tea.NewView("\n" + m.repoList.View())
+		v.AltScreen = true
+		return v
 	}
 
 	if !m.ready {
@@ -455,7 +574,7 @@ func (m manageGroupModel) View() tea.View {
 			"  No groups defined yet.\n\n" +
 			"  Groups let you clone subsets of your repos at once.\n" +
 			"  Press a to create your first group.\n\n" +
-			"  Press q to go back.\n"
+			"  Press esc to go back.\n"
 		v := tea.NewView(content)
 		v.AltScreen = true
 		return v

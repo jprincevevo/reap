@@ -74,11 +74,12 @@ func (m manageRepoModel) buildList() list.Model {
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
+	l.Help.Styles = dimHelpStyles
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add")),
 			key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
-			key.NewBinding(key.WithKeys("q"), key.WithHelp("q", "done")),
+			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
 	}
 
@@ -108,10 +109,11 @@ func (m manageRepoModel) buildDetailList() list.Model {
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
+	l.Help.Styles = dimHelpStyles
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add to group")),
-			key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "remove from group")),
+			key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "remove from group")),
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
 		}
 	}
@@ -154,6 +156,7 @@ func (m manageRepoModel) buildGroupList() list.Model {
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
+	l.Help.Styles = dimHelpStyles
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
@@ -203,10 +206,10 @@ func (m manageRepoModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c":
+		case "ctrl+c", "q":
 			return m, tea.Quit
 
-		case "q", "esc":
+		case "esc":
 			m.goBack = true
 			return m, tea.Quit
 
@@ -257,10 +260,10 @@ func (m manageRepoModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c":
+		case "ctrl+c", "q":
 			return m, tea.Quit
 
-		case "q", "esc":
+		case "esc":
 			m.screen = mrScreenList
 			m.list = m.buildList()
 			return m, nil
@@ -270,7 +273,7 @@ func (m manageRepoModel) updateDetail(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.groupList = m.buildGroupList()
 			return m, nil
 
-		case "r":
+		case "d":
 			sel, ok := m.detailList.SelectedItem().(item)
 			if !ok {
 				return m, nil
@@ -303,10 +306,10 @@ func (m manageRepoModel) updateAddToGroup(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c":
+		case "ctrl+c", "q":
 			return m, tea.Quit
 
-		case "q", "esc":
+		case "esc":
 			m.screen = mrScreenDetail
 			m.detailList = m.buildDetailList()
 			return m, nil

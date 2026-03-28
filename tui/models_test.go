@@ -417,8 +417,8 @@ func TestAppModel_GroupsGoBack_TransitionsToHome(t *testing.T) {
 	am.groups.list.SetSize(80, listHeight)
 	am.groups.ready = true
 
-	// q at groups list sets goBack = true, which appModel intercepts.
-	updated, _ := am.Update(pressChar('q'))
+	// esc at groups list sets goBack = true, which appModel intercepts.
+	updated, _ := am.Update(pressKey(tea.KeyEscape))
 	result := updated.(appModel)
 	if result.screen != appScreenHome {
 		t.Errorf("screen = %v, want appScreenHome", result.screen)
@@ -436,7 +436,8 @@ func TestAppModel_ReposGoBack_TransitionsToHome(t *testing.T) {
 	am.repos.list.SetSize(80, listHeight)
 	am.repos.ready = true
 
-	updated, _ := am.Update(pressChar('q'))
+	// esc at repos list sets goBack = true, which appModel intercepts.
+	updated, _ := am.Update(pressKey(tea.KeyEscape))
 	result := updated.(appModel)
 	if result.screen != appScreenHome {
 		t.Errorf("screen = %v, want appScreenHome", result.screen)
@@ -465,12 +466,21 @@ func TestPromptModel_Constructor_IsReady(t *testing.T) {
 // manageGroupModel — list screen
 // ==============================
 
-func TestManageGroupModel_List_QSetsGoBack(t *testing.T) {
+func TestManageGroupModel_List_QHardQuits(t *testing.T) {
 	m := newManageGroupModel(sampleCfg())
 	updated, _ := m.Update(pressChar('q'))
 	result := updated.(manageGroupModel)
+	if result.goBack {
+		t.Error("q: goBack = true, want false (hard quit)")
+	}
+}
+
+func TestManageGroupModel_List_EscSetsGoBack(t *testing.T) {
+	m := newManageGroupModel(sampleCfg())
+	updated, _ := m.Update(pressKey(tea.KeyEscape))
+	result := updated.(manageGroupModel)
 	if !result.goBack {
-		t.Error("q: goBack = false, want true")
+		t.Error("esc: goBack = false, want true")
 	}
 }
 
@@ -553,26 +563,36 @@ func TestManageGroupModel_Detail_EscTransitionsBackToList(t *testing.T) {
 	}
 }
 
-func TestManageGroupModel_Detail_QTransitionsBackToList(t *testing.T) {
+func TestManageGroupModel_Detail_QHardQuits(t *testing.T) {
 	m := newManageGroupDetailModel(sampleCfg(), "work")
 
 	updated, _ := m.Update(pressChar('q'))
 	result := updated.(manageGroupModel)
-	if result.screen != mgScreenList {
-		t.Errorf("screen = %v, want mgScreenList", result.screen)
+	if result.screen != mgScreenDetail {
+		t.Errorf("q: screen changed to %v, want mgScreenDetail (should hard quit, not navigate)", result.screen)
 	}
 }
 
-func TestManageGroupModel_Detail_RTransitionsToConfirmRemoveRepo(t *testing.T) {
+func TestManageGroupModel_Detail_DTransitionsToConfirmRemoveRepo(t *testing.T) {
 	m := newManageGroupDetailModel(sampleCfg(), "work")
 
-	updated, _ := m.Update(pressChar('r'))
+	updated, _ := m.Update(pressChar('d'))
 	result := updated.(manageGroupModel)
 	if result.screen != mgScreenConfirmRemoveRepo {
 		t.Errorf("screen = %v, want mgScreenConfirmRemoveRepo", result.screen)
 	}
 	if result.selectedRepo == "" {
-		t.Error("selectedRepo is empty after r in detail")
+		t.Error("selectedRepo is empty after d in detail")
+	}
+}
+
+func TestManageGroupModel_Detail_ATransitionsToAddRepoToGroup(t *testing.T) {
+	m := newManageGroupDetailModel(sampleCfg(), "work")
+
+	updated, _ := m.Update(pressChar('a'))
+	result := updated.(manageGroupModel)
+	if result.screen != mgScreenAddRepoToGroup {
+		t.Errorf("screen = %v, want mgScreenAddRepoToGroup", result.screen)
 	}
 }
 
@@ -601,12 +621,21 @@ func TestManageGroupModel_BuildDetailList_TitleIncludesGroupName(t *testing.T) {
 // manageRepoModel — list screen
 // ==============================
 
-func TestManageRepoModel_List_QSetsGoBack(t *testing.T) {
+func TestManageRepoModel_List_QHardQuits(t *testing.T) {
 	m := newManageRepoModel(sampleCfg())
 	updated, _ := m.Update(pressChar('q'))
 	result := updated.(manageRepoModel)
+	if result.goBack {
+		t.Error("q: goBack = true, want false (hard quit)")
+	}
+}
+
+func TestManageRepoModel_List_EscSetsGoBack(t *testing.T) {
+	m := newManageRepoModel(sampleCfg())
+	updated, _ := m.Update(pressKey(tea.KeyEscape))
+	result := updated.(manageRepoModel)
 	if !result.goBack {
-		t.Error("q: goBack = false, want true")
+		t.Error("esc: goBack = false, want true")
 	}
 }
 
@@ -673,17 +702,17 @@ func TestManageRepoModel_Detail_ATransitionsToAddToGroup(t *testing.T) {
 	}
 }
 
-func TestManageRepoModel_Detail_RTransitionsToConfirmRemoveGroup(t *testing.T) {
-	// gamma.git has 2 groups — its detail list is non-empty so r can select one
+func TestManageRepoModel_Detail_DTransitionsToConfirmRemoveGroup(t *testing.T) {
+	// gamma.git has 2 groups — its detail list is non-empty so d can select one
 	m := newManageRepoDetailModel(sampleCfg(), "https://github.com/c/gamma.git")
 
-	updated, _ := m.Update(pressChar('r'))
+	updated, _ := m.Update(pressChar('d'))
 	result := updated.(manageRepoModel)
 	if result.screen != mrScreenConfirmRemoveGroup {
 		t.Errorf("screen = %v, want mrScreenConfirmRemoveGroup", result.screen)
 	}
 	if result.pendingGroup == "" {
-		t.Error("pendingGroup is empty after r in detail")
+		t.Error("pendingGroup is empty after d in detail")
 	}
 }
 

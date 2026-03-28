@@ -204,6 +204,7 @@ func NewRepoModel(cfg *config.Config, group string) repoModel {
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
+	l.Help.Styles = dimHelpStyles
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(

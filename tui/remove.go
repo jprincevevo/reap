@@ -77,6 +77,7 @@ func NewRemoveModel(cfg *config.Config) removeModel {
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
+	l.Help.Styles = dimHelpStyles
 
 	return removeModel{list: l}
 }

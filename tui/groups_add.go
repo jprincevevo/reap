@@ -79,6 +79,7 @@ func NewGroupAddModel(cfg *config.Config) groupAddModel {
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
+	l.Help.Styles = dimHelpStyles
 
 	return groupAddModel{list: l}
 }

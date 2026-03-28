@@ -8,6 +8,7 @@ import (
 
 	"github.com/jprincevevo/reap/config"
 
+	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
@@ -15,6 +16,14 @@ import (
 )
 
 const listHeight = 14
+
+const bannerText = `
+  ██████╗ ███████╗ █████╗ ██████╗
+  ██╔══██╗██╔════╝██╔══██╗██╔══██╗
+  ██████╔╝█████╗  ███████║██████╔╝
+  ██╔══██╗██╔══╝  ██╔══██║██╔═══╝
+  ██║  ██║███████╗██║  ██║██║
+  ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝`
 
 // Color palette — shared across all TUI screens.
 // Uses LightDark to adapt to dark/light terminal backgrounds at startup.
@@ -24,7 +33,7 @@ var (
 	colorAccent  = lightDark(lipgloss.Color("#FF9F1C"), lipgloss.Color("#FF9F1C")) // amber
 	colorSuccess = lightDark(lipgloss.Color("#2EC4B6"), lipgloss.Color("#2EC4B6")) // teal
 	colorError   = lightDark(lipgloss.Color("#b91c1c"), lipgloss.Color("#ef4444")) // red (semantic override)
-	colorDim     = lightDark(lipgloss.Color("#9ca3af"), lipgloss.Color("#6b7280")) // gray
+	colorDim     = lightDark(lipgloss.Color("#9ca3af"), lipgloss.Color("#c9cdd4")) // gray
 	colorMuted   = lightDark(lipgloss.Color("#a05c00"), lipgloss.Color("#FFBF69")) // peach / dark amber
 )
 
@@ -34,9 +43,22 @@ var (
 	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(colorAccent)
 	cursorStyle       = lipgloss.NewStyle().Foreground(colorAccent)
 	paginationStyle   = list.DefaultStyles(false).PaginationStyle.PaddingLeft(4)
-	helpStyle         = list.DefaultStyles(false).HelpStyle.PaddingLeft(4).PaddingBottom(1)
+	helpStyle         = list.DefaultStyles(false).HelpStyle.PaddingLeft(4).PaddingBottom(1).Foreground(colorAccent)
 	quitTextStyle     = lipgloss.NewStyle().Margin(1, 0, 2, 4)
 )
+
+// dimHelpStyles overrides the bubbles help.Model's per-token colors so that
+// all key/description/separator text uses colorDim rather than the library's
+// own near-invisible dark defaults.
+var dimHelpStyles = help.Styles{
+	ShortKey:       lipgloss.NewStyle().Foreground(colorMuted),
+	ShortDesc:      lipgloss.NewStyle().Foreground(colorDim),
+	ShortSeparator: lipgloss.NewStyle().Foreground(colorDim),
+	Ellipsis:       lipgloss.NewStyle().Foreground(colorDim),
+	FullKey:        lipgloss.NewStyle().Foreground(colorMuted),
+	FullDesc:       lipgloss.NewStyle().Foreground(colorDim),
+	FullSeparator:  lipgloss.NewStyle().Foreground(colorDim),
+}
 
 type item string
 
@@ -71,6 +93,7 @@ type groupModel struct {
 	quitting  bool
 	ready     bool
 	repoCount int // total repos in config, used to show onboarding when zero
+	width     int
 }
 
 func (m groupModel) Init() tea.Cmd {
@@ -81,6 +104,7 @@ func (m groupModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.list.SetSize(msg.Width, listHeight)
+		m.width = msg.Width
 		m.ready = true
 		return m, nil
 
@@ -122,11 +146,20 @@ func (m groupModel) View() tea.View {
 	}
 	// Onboarding: no repos configured yet.
 	if m.repoCount == 0 {
-		content := "\n" + titleStyle.Render("Welcome to reap") + "\n\n" +
-			"  No repositories configured yet.\n\n" +
-			"  Press r to open repo management, or run:\n" +
-			"    reap repo add <url>\n\n" +
-			"  Press q to quit.\n"
+		bannerStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+		dimStyle := lipgloss.NewStyle().Foreground(colorDim).MarginLeft(2)
+		cmdStyle := lipgloss.NewStyle().Foreground(colorMuted).MarginLeft(4)
+		mutedInline := lipgloss.NewStyle().Foreground(colorMuted)
+		keyStyle := lipgloss.NewStyle().Foreground(colorAccent)
+
+		content := bannerStyle.Render(bannerText) + "\n\n" +
+			dimStyle.Render("Batch-clone Git repos from a YAML config file.") + "\n\n" +
+			dimStyle.Render("Get started:") + "\n" +
+			cmdStyle.Render("Press ") + keyStyle.Render("r") + mutedInline.Render(" to open repo management") + "\n" +
+			cmdStyle.Render("Or run:  reap repo add <url>") + "\n\n" +
+			dimStyle.Render("GitHub:") + "\n" +
+			cmdStyle.Render("github.com/jprincevevo/reap") + "\n\n" +
+			dimStyle.Render("Press ") + keyStyle.Render("q") + lipgloss.NewStyle().Foreground(colorDim).Render(" to quit.")
 		v := tea.NewView(content)
 		v.AltScreen = true
 		return v
@@ -159,6 +192,7 @@ func NewGroupModel(cfg *config.Config) groupModel {
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
+	l.Help.Styles = dimHelpStyles
 	l.AdditionalShortHelpKeys = func() []key.Binding {
 		return []key.Binding{
 			key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "groups")),
