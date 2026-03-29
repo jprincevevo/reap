@@ -1,6 +1,9 @@
 # reap
 
 [![Latest Release](https://img.shields.io/github/v/release/jprincevevo/reap?style=flat-square&color=7D56F4)](https://github.com/jprincevevo/reap/releases/latest)
+[![Go Report Card](https://goreportcard.com/badge/github.com/jprincevevo/reap)](https://goreportcard.com/report/github.com/jprincevevo/reap)
+
+![reap demo](demo.gif)
 
 A high-performance, visually polished CLI tool for batch-cloning Git repositories based on a YAML config. Optimized for "clone-audit-delete" workflows.
 
@@ -19,7 +22,7 @@ Download the pre-compiled binary for your OS from the [Releases Page](https://gi
 
 ### Via Go
 ```bash
-go install [github.com/jprincevevo/reap@latest](https://github.com/jprincevevo/reap@latest)
+go install github.com/jprincevevo/reap@latest
 ```
 
 ## 🚀 Quick Start
