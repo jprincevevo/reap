@@ -870,48 +870,84 @@ func TestSettingsModel_CtrlC_SetsQuitting(t *testing.T) {
 	}
 }
 
-func TestSettingsModel_EnterOnDepth_AdvancesToDirField(t *testing.T) {
+func TestSettingsModel_Tab_AdvancesFocus(t *testing.T) {
 	m := newSettingsModel(&config.Config{})
-	if m.field != settingsFieldDepth {
-		t.Fatal("precondition: expected settingsFieldDepth as initial field")
+	if m.focused != settingsFieldDepth {
+		t.Fatal("precondition: initial focus should be settingsFieldDepth")
 	}
-	updated, _ := m.Update(pressKey(tea.KeyEnter))
+
+	updated, _ := m.Update(pressKey(tea.KeyTab))
 	sm := updated.(settingsModel)
-	if sm.field != settingsFieldDir {
-		t.Errorf("field = %v, want settingsFieldDir", sm.field)
+	if sm.focused != settingsFieldDir {
+		t.Errorf("tab from depth: focused = %v, want settingsFieldDir", sm.focused)
+	}
+
+	updated, _ = sm.Update(pressKey(tea.KeyTab))
+	sm = updated.(settingsModel)
+	if sm.focused != settingsFieldPull {
+		t.Errorf("tab from dir: focused = %v, want settingsFieldPull", sm.focused)
+	}
+
+	updated, _ = sm.Update(pressKey(tea.KeyTab))
+	sm = updated.(settingsModel)
+	if sm.focused != settingsFieldDepth {
+		t.Errorf("tab from pull (wrap): focused = %v, want settingsFieldDepth", sm.focused)
 	}
 }
 
-func TestSettingsModel_EnterOnDir_AdvancesToPullField(t *testing.T) {
+func TestSettingsModel_ShiftTab_ReversesFocus(t *testing.T) {
 	m := newSettingsModel(&config.Config{})
-	m.field = settingsFieldDir
-	m.prompt = NewPromptModel("Default clone directory", "")
-	updated, _ := m.Update(pressKey(tea.KeyEnter))
+	if m.focused != settingsFieldDepth {
+		t.Fatal("precondition: initial focus should be settingsFieldDepth")
+	}
+
+	shiftTab := tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	updated, _ := m.Update(shiftTab)
 	sm := updated.(settingsModel)
-	if sm.field != settingsFieldPull {
-		t.Errorf("field = %v, want settingsFieldPull", sm.field)
+	if sm.focused != settingsFieldPull {
+		t.Errorf("shift+tab from depth (wrap): focused = %v, want settingsFieldPull", sm.focused)
 	}
 }
 
-func TestSettingsModel_PullToggle_SpaceToggles(t *testing.T) {
+func TestSettingsModel_Space_TogglesOnlyWhenPullFocused(t *testing.T) {
 	m := newSettingsModel(&config.Config{DefaultPull: false})
-	m.field = settingsFieldPull
-	if m.pull {
-		t.Fatal("precondition: pull should start false")
-	}
+
+	// Space on depth field should not toggle pull.
 	updated, _ := m.Update(pressKey(tea.KeySpace))
 	sm := updated.(settingsModel)
+	if sm.pull {
+		t.Error("space on depth: pull toggled, want no-op")
+	}
+
+	// Move to pull field and toggle.
+	sm.setFocus(settingsFieldPull)
+	updated, _ = sm.Update(pressKey(tea.KeySpace))
+	sm = updated.(settingsModel)
 	if !sm.pull {
-		t.Error("space: pull = false, want true after toggle")
+		t.Error("space on pull: pull = false, want true after toggle")
 	}
 }
 
-func TestSettingsModel_PullToggle_EnterSetsGoBack(t *testing.T) {
-	m := newSettingsModel(&config.Config{})
-	m.field = settingsFieldPull
+func TestSettingsModel_Enter_SavesAllFieldsAndSetsGoBack(t *testing.T) {
+	cfg := &config.Config{}
+	m := newSettingsModel(cfg)
+	m.depthInput.SetValue("3")
+	m.dirInput.SetValue("/tmp/repos")
+	m.setFocus(settingsFieldPull)
+	m.pull = true
+
 	updated, _ := m.Update(pressKey(tea.KeyEnter))
 	sm := updated.(settingsModel)
 	if !sm.goBack {
-		t.Error("enter on pull: goBack = false, want true")
+		t.Error("enter: goBack = false, want true")
+	}
+	if cfg.DefaultDepth != 3 {
+		t.Errorf("enter: DefaultDepth = %d, want 3", cfg.DefaultDepth)
+	}
+	if cfg.DefaultDir != "/tmp/repos" {
+		t.Errorf("enter: DefaultDir = %q, want /tmp/repos", cfg.DefaultDir)
+	}
+	if !cfg.DefaultPull {
+		t.Error("enter: DefaultPull = false, want true")
 	}
 }

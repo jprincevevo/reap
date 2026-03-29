@@ -55,6 +55,8 @@ func newList(items []list.Item, delegate list.ItemDelegate, title string) list.M
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
 	l.Help.Styles = dimHelpStyles
+	l.KeyMap.ShowFullHelp.SetEnabled(false)
+	l.KeyMap.CloseFullHelp.SetEnabled(false)
 	return l
 }
 

@@ -32,6 +32,8 @@ reap/
 │   ├── settings.go      # Settings form screen (depth, dir, pull toggle)
 │   ├── prompt.go        # Text-input prompt sub-model shared by management screens
 │   ├── paste_add.go     # Paste/drop URL confirmation + optional group selection
+│   ├── list_nav.go      # navListModel — navigation-only list wrapper (enter/esc/q)
+│   ├── list_select.go   # selectListModel — multi-select list wrapper (space/ctrl+a/ctrl+d)
 │   └── models_test.go   # Headless unit tests for TUI model constructors and Update logic
 ├── version/
 │   └── version.go       # `var Version = "dev"` — injected at build time via ldflags
@@ -120,7 +122,7 @@ paginationStyle, helpStyle, quitTextStyle
 dimHelpStyles   // help.Styles override for all list help bars
 ```
 
-**`newList(items, delegate, title)`** — shared constructor that applies all standard styles and settings to a `list.Model`. Every `build*List()` method and list constructor calls this instead of duplicating the 7-line setup block.
+**`newList(items, delegate, title)`** — shared constructor that applies all standard styles and settings to a `list.Model`, including disabling the `ShowFullHelp` / `CloseFullHelp` keybindings so the `? more` toggle never appears. Every `build*List()` method and list constructor calls this instead of duplicating the setup block.
 
 **`logSaveErr(err)`** — prints `"Error saving config: <err>"` to stdout when err is non-nil. Used at every `config.Save` call site in the TUI (can't return errors from Update).
 
@@ -130,6 +132,12 @@ Each list-based screen (groups, repos, remove, groups_add, management screens) h
 - A custom `ItemDelegate` that renders items using `itemStyle` / `selectedItemStyle`
 - A `WindowSizeMsg` handler that calls `m.list.SetSize(msg.Width, listHeight)` — **use `SetSize`, not `SetWidth`**, to ensure the paginator's `PerPage` is recalculated correctly at the new terminal width
 - A call to `newList(items, delegate, title)` in the constructor — do not inline the style setup
+
+**`ShowFullHelp` gotcha:** `list.Model.SetSize` unconditionally re-enables `ShowFullHelp` and `CloseFullHelp` on every call, overwriting any constructor-time `SetEnabled(false)`. Both `navListModel` and `selectListModel` override `SetSize` to re-disable those bindings immediately after delegating to `list.Model.SetSize`. **Never call `m.Model.SetSize` directly on these types** — always call `m.SetSize` (or the promoted method) so the override fires.
+
+### navListModel and selectListModel (`tui/list_nav.go`, `tui/list_select.go`)
+
+Navigation-only and multi-select list wrappers. Both embed `list.Model` and override `SetSize(*navListModel / *selectListModel, w, h int)` to keep `ShowFullHelp` permanently disabled. All list screens in the app use one of these two types rather than `list.Model` directly.
 
 ### Critical TUI rendering rule (v2)
 
@@ -345,7 +353,7 @@ TUI model logic is tested headlessly by calling `Update` with hand-crafted `tea.
 - `promptModel` constructor — `Focused()` returns true, `ready` is true
 - `manageGroupModel` — list screen key routing (enter/a/r/d/q), q sets goBack (not done), detail screen key routing (esc/q/r), `buildDetailList` content and title
 - `manageRepoModel` — list screen key routing (enter/a/q), q sets goBack (not done), detail screen key routing (esc/a/r), add-to-group esc, `buildDetailList` content, `buildGroupList` exclusion logic
-- `settingsModel` — esc sets goBack, ctrl+c sets quitting, enter on depth advances to dir field, enter on dir advances to pull field, space toggles pull, enter on pull sets goBack
+- `settingsModel` — esc sets goBack, ctrl+c sets quitting, tab/shift-tab cycle focus between fields, space toggles pull (only when pull field focused), enter saves all three fields to config and sets goBack
 
 ### What is not tested
 

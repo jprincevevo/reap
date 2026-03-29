@@ -10,7 +10,6 @@ import (
 
 	"github.com/jprincevevo/reap/config"
 
-	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -136,17 +135,27 @@ func (m repoModel) View() tea.View {
 	if m.list.FilterState() == list.FilterApplied {
 		enterHelp = "clone visible"
 	}
-	m.list.AdditionalShortHelpKeys = func() []key.Binding {
-		return []key.Binding{
-			key.NewBinding(key.WithKeys("space"), key.WithHelp("space", "toggle")),
-			key.NewBinding(key.WithKeys("ctrl+a"), key.WithHelp("ctrl+a", "select all")),
-			key.NewBinding(key.WithKeys("ctrl+d"), key.WithHelp("ctrl+d", "deselect all")),
-			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", enterHelp)),
-			key.NewBinding(key.WithKeys("~"), key.WithHelp("~", "already in dir")),
-			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-		}
-	}
-	v := tea.NewView("\n" + m.list.Model.View())
+
+	k := lipgloss.NewStyle().Foreground(colorMuted)
+	d := lipgloss.NewStyle().Foreground(colorDim)
+	sep := d.Render(" • ")
+	indent := "  "
+
+	navLine := indent +
+		k.Render("↑/k") + d.Render(" up") + sep +
+		k.Render("↓/j") + d.Render(" down") + sep +
+		k.Render("/") + d.Render(" filter") + sep +
+		k.Render("esc") + d.Render(" back") + sep +
+		k.Render("q") + d.Render(" quit")
+
+	actionLine := indent +
+		k.Render("space") + d.Render(" toggle") + sep +
+		k.Render("enter") + d.Render(" "+enterHelp) + sep +
+		k.Render("ctrl+a") + d.Render(" select all") + sep +
+		k.Render("ctrl+d") + d.Render(" deselect all") + sep +
+		k.Render("~") + d.Render(" already in dir")
+
+	v := tea.NewView("\n" + m.list.Model.View() + "\n" + navLine + "\n" + actionLine + "\n")
 	v.AltScreen = true
 	return v
 }
@@ -182,6 +191,7 @@ func NewRepoModel(cfg *config.Config, group string) repoModel {
 	}
 
 	l := newSelectList(items, repoDelegate{}, "Select repositories to clone")
+	l.Model.SetShowHelp(false)
 
 	return repoModel{list: l}
 }

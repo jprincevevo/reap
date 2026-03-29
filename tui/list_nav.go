@@ -42,13 +42,21 @@ func newNavList(items []list.Item, delegate list.ItemDelegate, title string) nav
 	return navListModel{Model: newList(items, delegate, title)}
 }
 
+// SetSize overrides list.Model.SetSize to ensure ShowFullHelp stays disabled
+// after every resize, since list.Model.SetSize unconditionally re-enables it.
+func (m *navListModel) SetSize(w, h int) {
+	m.Model.SetSize(w, h)
+	m.Model.KeyMap.ShowFullHelp.SetEnabled(false)
+	m.Model.KeyMap.CloseFullHelp.SetEnabled(false)
+}
+
 // Update processes msg and returns the updated model, an event for the parent
 // to act on, and any command. Parents should handle domain-specific keys
 // (a, r, d, …) before calling Update and return early if they fire.
 func (m navListModel) Update(msg tea.Msg) (navListModel, navListEvent, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.Model.SetSize(msg.Width, listHeight)
+		m.SetSize(msg.Width, listHeight)
 		return m, navListEventNone, nil
 
 	case tea.KeyPressMsg:

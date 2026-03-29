@@ -62,10 +62,18 @@ func newSelectList(items []list.Item, delegate list.ItemDelegate, title string) 
 
 func (m selectListModel) Init() tea.Cmd { return nil }
 
+// SetSize overrides list.Model.SetSize to ensure ShowFullHelp stays disabled
+// after every resize, since list.Model.SetSize unconditionally re-enables it.
+func (m *selectListModel) SetSize(w, h int) {
+	m.Model.SetSize(w, h)
+	m.Model.KeyMap.ShowFullHelp.SetEnabled(false)
+	m.Model.KeyMap.CloseFullHelp.SetEnabled(false)
+}
+
 func (m selectListModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.Model.SetSize(msg.Width, listHeight)
+		m.SetSize(msg.Width, listHeight)
 		m.ready = true
 		return m, nil
 
