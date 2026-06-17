@@ -5,7 +5,7 @@
 
 ![reap demo](demo.gif)
 
-A high-performance, visually polished CLI tool for batch-cloning Git repositories based on a YAML config. Optimized for "clone-audit-delete" workflows.
+A tool for batch-cloning Git repositories based on a YAML config. Optimized for "clone-audit-delete" workflows.
 
 ## ✨ Features
 
